@@ -1,19 +1,16 @@
 package com.lxf.poi.apache.controller;
 
+import com.lxf.poi.util.POIUtils;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.*;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- *
  * @author 小66
  * @Description
  * @create 2019-08-08 10:43
@@ -28,42 +25,30 @@ public class POIController {
      * @throws Exception
      */
     @GetMapping("tables")
-    public String getTables() throws Exception {
+    public List<LinkedHashMap<String, Object>> getTables() throws Exception {
         File file = new File("C:\\Users\\Administrator\\Desktop\\POI\\HWPF测试写入.doc");
         FileInputStream inputStream = new FileInputStream(file);
         HWPFDocument document = new HWPFDocument(inputStream);
         Range range = document.getRange();
         TableIterator tableIterator = new TableIterator(range);
 
-        List<LinkedHashMap<String, String>> tableList = new ArrayList<>();
+        List<LinkedHashMap<String, Object>> tableList = new ArrayList<>();
         while (tableIterator.hasNext()) {
             //使用: row-column 作为 key、(需要有序,使用LinkedHashMap)
-            LinkedHashMap<String, String> tableMap = new LinkedHashMap<>();
+            LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
             Table table = tableIterator.next();
             for (int i = 0; i < table.numRows(); i++) {
                 TableRow row = table.getRow(i);//TableRow表示:表格的一整行.
-                StringBuilder cellTrim = new StringBuilder();
                 for (int cell = 0; cell < row.numCells(); cell++) {
                     TableCell tableCell = row.getCell(cell);
                     // tableCell.text(): 表示单元格内容、
                     tableMap.put(i + "-" + cell, tableCell.text().trim());
-                    if (cell < row.numCells() - 1)
-                        cellTrim.append(tableCell.text().trim()).append("|");
-                    else
-                        cellTrim.append(tableCell.text().trim());
-//                    StringBuilder paraTrim = new StringBuilder();
                     // tableCell.numParagraphs()==1、因此不需要再进行遍历、
 //                    System.out.println("tableCell.numParagraphs() = " + tableCell.numParagraphs());
 //                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
 //                        Paragraph paragraph = tableCell.getParagraph(para);
-//                        if (para < tableCell.numParagraphs() - 1)
-//                            paraTrim.append(paragraph.text().trim()).append("-");
-//                        else
-//                            paraTrim.append(paragraph.text().trim());
 //                    }
-//                    System.out.println("paraTrim = " + paraTrim);
                 }
-                System.out.println("cellTrim = " + cellTrim);
             }
             tableList.add(tableMap);
         }
@@ -71,7 +56,7 @@ public class POIController {
 
         document.close();
         inputStream.close();
-        return tableList.toString();
+        return tableList;
     }
 
     /**
@@ -164,8 +149,8 @@ public class POIController {
         //获取段落对象、
         Paragraph paragraph = range.getParagraph(0);
         /*
-        *   使用TableIterator tableIterator = new TableIterator(range);来获取Table对象、
-        * */
+         *   使用TableIterator tableIterator = new TableIterator(range);来获取Table对象、
+         * */
         Table table = range.getTable(paragraph);//从段落中获取表、
         int numRows = table.numRows();
         System.out.println("numRows = " + numRows);
@@ -183,7 +168,7 @@ public class POIController {
         }
         /*
          *   文件中多个同名的placeHolder会被替换同样的数据。
-         *       word文档(表格)中:存在两个人的信息(占位符)、替换后，全都变为Jack,18,北京
+         *       word文档(表格)中:存在两个人的信息(占位符)、替换后,全都变为Jack,18,北京
          * */
         //一次性对整个Range对象范围内的所有内容同时替换掉、
 //        for (Map<String, Object> map : mapList) {
@@ -273,171 +258,53 @@ public class POIController {
     }
 
     /**
-     * 更新指定文件模板的数据.
+     * 填充docx文件模板${}的数据
      *
      * @return
      * @throws Exception
      */
-    @PutMapping("/updateDOCX")
+    @GetMapping("/updateDOCX")
     public String updateDOCX() throws Exception {
         Map<String, Object> params = new HashMap<>();
-        params.put("report", "2014-02-28");
-        params.put("appleAmt", "100.00");
-        params.put("bananaAmt", "200.00");
-        params.put("totalAmt", "300.00");
-        String filePath = "E:\\text.docx";
+        params.put("name", "Jack");
+        params.put("age", 18);
+        String filePath = "C:\\Users\\Administrator\\Desktop\\POI\\XWPF测试更新.docx";
         InputStream is = new FileInputStream(filePath);
         XWPFDocument doc = new XWPFDocument(is);
+        POIUtils poiUtils = new POIUtils();
         //替换段落里面的变量
-        this.replaceInPara(doc, params);
+        poiUtils.resetParagraphDOCX(doc, params);
         //替换表格里面的变量
-        this.replaceInTable(doc, params);
-        OutputStream os = new FileOutputStream("E:\\write.docx");
+        poiUtils.resetTableDOCX(doc, params);
+        OutputStream os = new FileOutputStream(filePath);
 
         doc.write(os);
-        this.close(os);
-        this.close(is);
+        os.close();
+        is.close();
         return "";
     }
 
-    /**
-     * 替换段落里面的变量
-     *
-     * @param doc    要替换的文档
-     * @param params 参数
-     */
-    private void replaceInPara(XWPFDocument doc, Map<String, Object> params) {
-        for (XWPFParagraph para : doc.getParagraphs()) {
-            this.replaceInPara(para, params);
-        }
-    }
+    @GetMapping("/insert")
+    public String insertData() throws Exception {
+        POIUtils poiUtils = new POIUtils();
+        List<String> tableHeader = new ArrayList<>();
+        tableHeader.add("name");
+        tableHeader.add("age");
+        tableHeader.add("address");
 
-    /**
-     * 替换段落里面的变量
-     *
-     * @param para   要替换的段落
-     * @param params 参数
-     */
-    private void replaceInPara(XWPFParagraph para, Map<String, Object> params) {
-        List<XWPFRun> runs;
-        Matcher matcher;
-        this.replaceText(para);//如果para拆分的不对，则用这个方法修改成正确的
-        if (this.matcher(para.getParagraphText()).find()) {
-            runs = para.getRuns();
-            for (int i = 0; i < runs.size(); i++) {
-                XWPFRun run = runs.get(i);
-                String runText = run.toString();
-                matcher = this.matcher(runText);
-                if (matcher.find()) {
-                    while ((matcher = this.matcher(runText)).find()) {
-                        runText = matcher.replaceFirst(String.valueOf(params.get(matcher.group(1))));
-                    }
-                    //直接调用XWPFRun的setText()方法设置文本时，在底层会重新创建一个XWPFRun，把文本附加在当前文本后面，
-                    //所以我们不能直接设值，需要先删除当前run,然后再自己手动插入一个新的run。
-                    para.removeRun(i);
-                    para.insertNewRun(i).setText(runText);
-                }
-            }
-        }
-    }
+        List<Map<String, Object>> mapList = new ArrayList<>();//数据库查询获得、
+        Map<String, Object> params = new HashMap<>();
+        params.put("name", "Jack");
+        params.put("age", 18);
+        params.put("address", "重庆");
+        Map<String, Object> params2 = new HashMap<>();
+        params2.put("name", "Lucy");
+        params2.put("age", 21);
+        params2.put("address", "北京");
+        mapList.add(params);
+        mapList.add(params2);
 
-    /**
-     * 合并runs中的内容
-     *
-     * @param para
-     * @return
-     */
-    private List<XWPFRun> replaceText(XWPFParagraph para) {
-        List<XWPFRun> runs = para.getRuns();
-        String str = "";
-        boolean flag = false;
-        for (int i = 0; i < runs.size(); i++) {
-            XWPFRun run = runs.get(i);
-            String runText = run.toString();
-            if (flag || runText.equals("${")) {
-
-                str = str + runText;
-                flag = true;
-                para.removeRun(i);
-                if (runText.equals("}")) {
-                    flag = false;
-                    para.insertNewRun(i).setText(str);
-                    str = "";
-                }
-                i--;
-            }
-
-        }
-
-        return runs;
-    }
-
-    /**
-     * 替换表格里面的变量
-     *
-     * @param doc    要替换的文档
-     * @param params 参数
-     */
-    private void replaceInTable(XWPFDocument doc, Map<String, Object> params) {
-        Iterator<XWPFTable> iterator = doc.getTablesIterator();
-        XWPFTable table;
-        List<XWPFTableRow> rows;
-        List<XWPFTableCell> cells;
-        List<XWPFParagraph> paras;
-        while (iterator.hasNext()) {
-            table = iterator.next();
-            rows = table.getRows();
-            for (XWPFTableRow row : rows) {
-                cells = row.getTableCells();
-                for (XWPFTableCell cell : cells) {
-                    paras = cell.getParagraphs();
-                    for (XWPFParagraph para : paras) {
-                        this.replaceInPara(para, params);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 正则匹配字符串
-     *
-     * @param str
-     * @return
-     */
-    private Matcher matcher(String str) {
-        Pattern pattern = Pattern.compile("\\$\\{(.+?)\\}", Pattern.CASE_INSENSITIVE);
-        Matcher matcher = pattern.matcher(str);
-        return matcher;
-    }
-
-    /**
-     * 关闭输入流
-     *
-     * @param is
-     */
-    private void close(InputStream is) {
-        if (is != null) {
-            try {
-                is.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    /**
-     * 关闭输出流
-     *
-     * @param os
-     */
-    private void close(OutputStream os) {
-        if (os != null) {
-            try {
-                os.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        poiUtils.dataInsertIntoTable("XWPF测试新建表格","用户信息表", tableHeader, mapList);
+        return "";
     }
 }
