@@ -1,6 +1,6 @@
 package com.lxf.poi.apache.controller;
 
-import com.lxf.poi.util.POIUtils;
+import com.lxf.poi.util.POIWordUtil;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
@@ -18,6 +18,10 @@ import java.util.*;
 @RestController
 public class POIController {
 
+    private final String BASE_DIRECTORY_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
+    private final String DOC_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "HWPF测试模板.doc";
+    private String DOCX_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "XWPF测试模板.docx";
+
     /**
      * 获取.doc文档中的所有表格的数据、
      *
@@ -26,7 +30,7 @@ public class POIController {
      */
     @GetMapping("tables")
     public List<LinkedHashMap<String, Object>> getTables() throws Exception {
-        File file = new File("C:\\Users\\Administrator\\Desktop\\POI\\HWPF测试写入.doc");
+        File file = new File(BASE_DIRECTORY_PATH + "HWPF测试写入.doc");
         FileInputStream inputStream = new FileInputStream(file);
         HWPFDocument document = new HWPFDocument(inputStream);
         Range range = document.getRange();
@@ -69,7 +73,7 @@ public class POIController {
     @GetMapping("/create")
     public String createDOC() throws Exception {
         //新建空白文档、
-        File file = new File("C:\\Users\\Administrator\\Desktop\\POI\\HWPF测试写入.doc");
+        File file = new File(BASE_DIRECTORY_PATH + "HWPF测试写入.doc");
         if (!file.exists()) {
             boolean newFile = file.createNewFile();
             if (!newFile)
@@ -126,12 +130,8 @@ public class POIController {
      */
     @GetMapping("/write")
     public String writeData() throws Exception {
-        File file = new File("C:\\Users\\Administrator\\Desktop\\POI\\HWPF测试写入.doc");
-        FileInputStream inputStream = new FileInputStream(file);
+        FileInputStream inputStream = new FileInputStream(DOC_TEMPLATE_FILE_PATH);
         HWPFDocument document = new HWPFDocument(inputStream);
-
-        String doc = document.getText().toString().trim().replaceAll("\u0007", ",");
-        System.out.println("doc = " + doc);
 
         List<Map<String, Object>> mapList = new ArrayList<>();
         Map<String, Object> userMap = new HashMap<>();
@@ -144,49 +144,37 @@ public class POIController {
         userMap2.put("address", "重庆");
         mapList.add(userMap);
         mapList.add(userMap2);
-        Range range = document.getRange();
 
-        //获取段落对象、
-        Paragraph paragraph = range.getParagraph(0);
-        /*
-         *   使用TableIterator tableIterator = new TableIterator(range);来获取Table对象、
-         * */
-        Table table = range.getTable(paragraph);//从段落中获取表、
-        int numRows = table.numRows();
-        System.out.println("numRows = " + numRows);
-        TableRow row = table.getRow(0);//获取到表格的某一行、
-        System.out.println("row = " + row);
+        POIWordUtil poiWordUtil = new POIWordUtil();
+        poiWordUtil.resetTableDOC(document, userMap2, 1);
 
-        //将List中的数据填充到表格中去、(替换每行的占位符)
-        for (int i = 1; i < numRows; i++) {
-            TableRow tableRow = table.getRow(i);
-            Map<String, Object> map = mapList.get(i - 1);
-            for (String key : map.keySet()) {
-                String placeHolder = "${" + key + "}";
-                tableRow.replaceText(placeHolder, map.get(key).toString());
-            }
-        }
         /*
-         *   文件中多个同名的placeHolder会被替换同样的数据。
-         *       word文档(表格)中:存在两个人的信息(占位符)、替换后,全都变为Jack,18,北京
+         *   一次性设置多张相同模板的表的${}变量为不同的数据、
          * */
-        //一次性对整个Range对象范围内的所有内容同时替换掉、
-//        for (Map<String, Object> map : mapList) {
-//            for (String key : map.keySet()) {
-//                String placeHolder = "${"+key+"}";
-//                System.out.println("placeHolder = " + placeHolder);
-//                range.replaceText(placeHolder,map.get(key).toString());
+//        Range range = document.getRange();
+//        TableIterator tableIterator = new TableIterator(range);//从段落中获取表、
+//        while (tableIterator.hasNext()) {
+//            Table table = tableIterator.next();
+//            //将List中的数据填充到表格中去、(替换每行的占位符)
+//            for (int i = 1; i < table.numRows(); i++) {
+//                TableRow tableRow = table.getRow(i);
+//                Map<String, Object> map = mapList.get(i - 1);
+//                for (String key : map.keySet()) {
+//                    String placeHolder = "${" + key + "}";
+//                    tableRow.replaceText(placeHolder, map.get(key).toString());
+//                }
 //            }
 //        }
 
+        String doc = document.getText().toString().trim().replaceAll("\u0007", ",").replaceAll(",,", ",");
         //把doc输出到输出流中
-        FileOutputStream outputStream = new FileOutputStream(file);
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HWPF测试resetTableDOC.doc");
         document.write(outputStream);
         document.close();
         outputStream.close();
         inputStream.close();
 
-        return "已完成内容填充";
+        return doc;
     }
 
     /**
@@ -197,7 +185,7 @@ public class POIController {
      */
     @GetMapping("/read")
     public String readData() throws Exception {
-        File file = new File("C:\\Users\\Administrator\\Desktop\\POI\\HWPF测试读取.doc");
+        File file = new File(BASE_DIRECTORY_PATH + "HWPF测试读取.doc");
         FileInputStream istream = new FileInputStream(file);
         HWPFDocument document = new HWPFDocument(istream);
 
@@ -249,7 +237,7 @@ public class POIController {
 
         r1.addTab();
 
-        FileOutputStream outputStream = new FileOutputStream("C:\\Users\\Administrator\\Desktop\\POI\\XWPF测试读取.docx");
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "XWPF测试读取.docx");
         doc.write(outputStream);
 
         doc.close();
@@ -268,14 +256,14 @@ public class POIController {
         Map<String, Object> params = new HashMap<>();
         params.put("name", "Jack");
         params.put("age", 18);
-        String filePath = "C:\\Users\\Administrator\\Desktop\\POI\\XWPF测试更新.docx";
+        String filePath = BASE_DIRECTORY_PATH + "XWPF测试更新.docx";
         InputStream is = new FileInputStream(filePath);
         XWPFDocument doc = new XWPFDocument(is);
-        POIUtils poiUtils = new POIUtils();
+        POIWordUtil poiWordUtil = new POIWordUtil();
         //替换段落里面的变量
-        poiUtils.resetParagraphDOCX(doc, params);
+        poiWordUtil.resetParagraphDOCX(doc, params);
         //替换表格里面的变量
-        poiUtils.resetTableDOCX(doc, params);
+        poiWordUtil.resetTableDOCX(doc, params);
         OutputStream os = new FileOutputStream(filePath);
 
         doc.write(os);
@@ -286,7 +274,7 @@ public class POIController {
 
     @GetMapping("/insert")
     public String insertData() throws Exception {
-        POIUtils poiUtils = new POIUtils();
+        POIWordUtil poiWordUtil = new POIWordUtil();
         List<String> tableHeader = new ArrayList<>();
         tableHeader.add("name");
         tableHeader.add("age");
@@ -304,7 +292,39 @@ public class POIController {
         mapList.add(params);
         mapList.add(params2);
 
-        poiUtils.dataInsertIntoTable("XWPF测试新建表格","用户信息表", tableHeader, mapList);
+        poiWordUtil.dataInsertIntoTable("XWPF测试新建表格", "用户信息表", tableHeader, mapList);
         return "";
+    }
+
+    @GetMapping("/resetTableDOC")
+    public String testResetTableDOC() throws Exception {
+        File file = new File(DOC_TEMPLATE_FILE_PATH);
+        FileInputStream inputStream = new FileInputStream(file);
+        HWPFDocument document = new HWPFDocument(inputStream);
+
+        Map<String, Object> userMap = new HashMap<>();
+        userMap.put("name", "Jack");
+        userMap.put("age", 18);
+        userMap.put("address", "北京");
+
+        POIWordUtil poiWordUtil = new POIWordUtil();
+        poiWordUtil.resetAllDOC(document, userMap);//填充文件段落中的占位符、
+
+        String text = document.getRange().text();
+
+        FileOutputStream outputStream = new FileOutputStream(
+                BASE_DIRECTORY_PATH + "HWPF测试restParagraphDOC.doc");
+        document.write(outputStream);
+        outputStream.close();
+        document.close();
+        inputStream.close();
+        return text;
+    }
+
+    @GetMapping("/testGetTablesDataList")
+    public String testGetTablesDataList() throws Exception {
+        POIWordUtil poiWordUtil = new POIWordUtil();
+        List<LinkedHashMap<String, Object>> tablesDataList = poiWordUtil.getTablesDataList(DOCX_TEMPLATE_FILE_PATH);
+        return tablesDataList.toString();
     }
 }

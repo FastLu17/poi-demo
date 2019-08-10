@@ -4,6 +4,7 @@ import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -19,10 +20,18 @@ import java.util.regex.Pattern;
  * @Description
  * @create 2019-08-09 15:17
  **/
-public class POIUtils {
+public class POIWordUtil {
 
     private final String BASE_URL = "C:\\Users\\Administrator\\Desktop\\POI\\";
 
+    /**
+     *  默认为第一张表添加数据、
+     * @param filePath
+     * @param tableHeader
+     * @param params
+     * @return
+     * @throws IOException
+     */
     public String createNewRowsForTable(String filePath, List<String> tableHeader, List<Map<String, Object>> params) throws IOException {
         createNewRowsForTable(filePath, tableHeader, params, 0);
         return "";
@@ -170,45 +179,25 @@ public class POIUtils {
     }
 
     /**
-     * 获取doc文件中表的数据、
+     * 获取doc、docx文件中表的数据、
      *
-     * @param absPath doc文件路径
+     * @param absPath doc、docx文件路径
      * @return List<Map>对象,Map的Key使用 row + "-"+ column 组成、value是单元格内容、
      * @throws IOException IO异常
      */
-    public List<LinkedHashMap<String, Object>> getDocTablesList(String absPath) throws IOException {
-        File file = new File(absPath);
-        FileInputStream inputStream = new FileInputStream(file);
-        HWPFDocument document = new HWPFDocument(inputStream);
-        Range range = document.getRange();
-        TableIterator tableIterator = new TableIterator(range);
-
-        List<LinkedHashMap<String, Object>> tableList = new ArrayList<>();
-        while (tableIterator.hasNext()) {
-            //使用: row-column 作为 key、(需要有序,使用LinkedHashMap)
-            LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
-            Table table = tableIterator.next();
-            for (int i = 0; i < table.numRows(); i++) {
-                TableRow row = table.getRow(i);//TableRow表示:表格的一整行.
-                for (int cell = 0; cell < row.numCells(); cell++) {
-                    TableCell tableCell = row.getCell(cell);
-                    // tableCell.text(): 表示单元格内容、
-                    tableMap.put(i + "-" + cell, tableCell.text().trim());
-                    // tableCell.numParagraphs()==1、因此不需要再进行遍历、
-//                    System.out.println("tableCell.numParagraphs() = " + tableCell.numParagraphs());
-//                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
-//                        Paragraph paragraph = tableCell.getParagraph(para);
-//                    }
-                }
-            }
-            tableList.add(tableMap);
+    public List<LinkedHashMap<String, Object>> getTablesDataList(String absPath) throws IOException {
+        if (StringUtils.isEmpty(absPath)) {
+            throw new RuntimeException("文件的绝对路径不能为空");
         }
-        System.out.println("tableList = " + tableList);
+        if (!absPath.endsWith(".doc") && !absPath.endsWith(".docx"))
+            throw new RuntimeException("文件类型必须为'doc'或者'docx'格式");
+        if (absPath.endsWith(".doc")) {
+            return getDOCTablesDataList(absPath);
+        }
+        return getDOCXTablesDataList(absPath);
 
-        document.close();
-        inputStream.close();
-        return tableList;
     }
+
 
     /**
      * 替换docx文件段落里面的变量
@@ -317,6 +306,85 @@ public class POIUtils {
         cTJc.setVal(STJc.Enum.forString(location));
     }
 
+
+    /**
+     * 替换doc文件中所有的${}变量 -->段落和表格
+     *
+     * @param doc    doc源文件
+     * @param params params的key:需要是源文件中${}的变量名、value是填充${}变量的值、
+     */
+    public void resetAllDOC(HWPFDocument doc, Map<String, Object> params) {
+        Range range = doc.getRange();
+        params.keySet().forEach(key ->
+                range.replaceText("${" + key + "}", params.get(key).toString()));
+    }
+
+    /**
+     * 替换doc文件中所有表格的${}变量
+     *
+     * @param doc    doc源文件
+     * @param params params的key:需要是源文件中${}的变量名、value是填充${}变量的值、
+     */
+    public void resetTableDOC(HWPFDocument doc, Map<String, Object> params) {
+        Range range = doc.getRange();//此时的Range对象,是文档的页眉和页脚之外的所有内容。
+        /*
+         *   使用TableIterator tableIterator = new TableIterator(range);来获取Table对象、
+         * */
+        TableIterator tableIterator = new TableIterator(range);//从当前的Range对象中获取TableIterator、
+
+        while (tableIterator.hasNext()) {
+            Table table = tableIterator.next();
+            for (int i = 1; i < table.numRows(); i++) {//表头没有变量,不需要遍历、
+                TableRow tableRow = table.getRow(i);
+                for (String key : params.keySet()) {
+                    String placeHolder = "${" + key + "}";
+                    tableRow.replaceText(placeHolder, params.get(key).toString());
+                }
+            }
+        }
+    }
+
+    /**
+     * 替换doc文件中指定表格的${}变量
+     *
+     * @param doc      doc源文件
+     * @param params   params的key:需要是源文件中${}的变量名、value是填充${}变量的值、
+     * @param indexArr doc源文件中的表格的index值、
+     */
+    public void resetTableDOC(HWPFDocument doc, Map<String, Object> params, Integer... indexArr) {
+        for (Integer integer : indexArr) {
+            if (integer < 0) {
+                throw new RuntimeException("index的值不能为负数");
+            }
+        }
+        Range range = doc.getRange();//此时的Range对象,是文档的页眉和页脚之外的所有内容。
+        TableIterator tableIterator = new TableIterator(range);//从当前的Range对象中获取TableIterator、
+
+        int tableIndex = 0;
+        /*
+        *   通过Arrays.asList获取的List、不可以执行list.remove()和list.add()方法、抛出 java.lang.UnsupportedOperationException异常。
+        * */
+        List<Integer> list = Arrays.asList(indexArr);
+        list = new ArrayList<>(list);//单独创建一个新的List对象、
+        Collections.sort(list);
+        while (tableIterator.hasNext()) {
+            if (list.size() == 0) {
+                break;
+            }
+            Table table = tableIterator.next();
+            if (tableIndex != list.get(0)) {
+                tableIndex++;
+                continue;
+            }
+            for (int i = 1; i < table.numRows(); i++) {//表头没有变量,不需要遍历、
+                TableRow tableRow = table.getRow(i);
+                params.keySet().forEach(key -> tableRow.replaceText("${" + key + "}", params.get(key).toString()));
+            }
+            list.remove(0);
+            tableIndex++;
+        }
+    }
+
     /**
      * 正则匹配字符串
      *
@@ -327,5 +395,76 @@ public class POIUtils {
         // 正则表达式: \$\{(.+?)} --> 匹配：${..} 形式的字符串、不能匹配 ${}。
         Pattern pattern = Pattern.compile("\\$\\{(.+?)}", Pattern.CASE_INSENSITIVE);//忽略大小写
         return pattern.matcher(str);
+    }
+
+    /**
+     * 处理docx文件表格数据
+     *
+     * @param absPath docx源文件路径
+     * @return data
+     * @throws IOException IO
+     */
+    private List<LinkedHashMap<String, Object>> getDOCXTablesDataList(String absPath) throws IOException {
+        List<LinkedHashMap<String, Object>> tableList = new ArrayList<>();
+        File file = new File(absPath);
+        FileInputStream inputStream = new FileInputStream(file);
+        XWPFDocument docx = new XWPFDocument(inputStream);
+        List<XWPFTable> tables = docx.getTables();
+        for (XWPFTable table : tables) {
+            LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
+            List<XWPFTableRow> tableRows = table.getRows();
+            for (int row = 0; row < tableRows.size(); row++) {
+                List<XWPFTableCell> tableCells = tableRows.get(row).getTableCells();
+                for (int column = 0; column < tableCells.size(); column++) {
+                    XWPFTableCell cell = tableCells.get(column);
+                    //使用: row-column 作为 key、
+                    tableMap.put(row + "-" + column, cell.getText().trim());
+                }
+            }
+            tableList.add(tableMap);
+        }
+        return tableList;
+    }
+
+    /**
+     * 处理doc文件表格数据
+     *
+     * @param absPath doc源文件路径
+     * @return data
+     * @throws IOException IO
+     */
+    private List<LinkedHashMap<String, Object>> getDOCTablesDataList(String absPath) throws IOException {
+
+        File file = new File(absPath);
+        FileInputStream inputStream = new FileInputStream(file);
+        HWPFDocument document = new HWPFDocument(inputStream);
+        Range range = document.getRange();
+        TableIterator tableIterator = new TableIterator(range);
+
+        List<LinkedHashMap<String, Object>> tableList = new ArrayList<>();
+        while (tableIterator.hasNext()) {
+            //使用: row-column 作为 key、(需要有序,使用LinkedHashMap)
+            LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
+            Table table = tableIterator.next();
+            for (int i = 0; i < table.numRows(); i++) {
+                TableRow row = table.getRow(i);//TableRow表示:表格的一整行.
+                for (int cell = 0; cell < row.numCells(); cell++) {
+                    TableCell tableCell = row.getCell(cell);
+                    // tableCell.text(): 表示单元格内容、
+                    tableMap.put(i + "-" + cell, tableCell.text().trim());
+                    // tableCell.numParagraphs()==1、因此不需要再进行遍历、
+//                    System.out.println("tableCell.numParagraphs() = " + tableCell.numParagraphs());
+//                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
+//                        Paragraph paragraph = tableCell.getParagraph(para);
+//                    }
+                }
+            }
+            tableList.add(tableMap);
+        }
+        System.out.println("tableList = " + tableList);
+
+        document.close();
+        inputStream.close();
+        return tableList;
     }
 }
