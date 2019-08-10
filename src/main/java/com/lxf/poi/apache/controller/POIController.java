@@ -292,12 +292,12 @@ public class POIController {
         mapList.add(params);
         mapList.add(params2);
 
-        poiWordUtil.dataInsertIntoTable("XWPF测试新建表格", "用户信息表", tableHeader, mapList);
+        poiWordUtil.createTableByData("XWPF测试新建表格", "用户信息表", tableHeader, mapList);
         return "";
     }
 
-    @GetMapping("/resetTableDOC")
-    public String testResetTableDOC() throws Exception {
+    @GetMapping("/resetAllDOC")
+    public String resetAllDOC() throws Exception {
         File file = new File(DOC_TEMPLATE_FILE_PATH);
         FileInputStream inputStream = new FileInputStream(file);
         HWPFDocument document = new HWPFDocument(inputStream);
@@ -315,16 +315,42 @@ public class POIController {
         FileOutputStream outputStream = new FileOutputStream(
                 BASE_DIRECTORY_PATH + "HWPF测试restParagraphDOC.doc");
         document.write(outputStream);
-        outputStream.close();
-        document.close();
-        inputStream.close();
+        poiWordUtil.closeStream(document,outputStream,inputStream);
         return text;
     }
 
-    @GetMapping("/testGetTablesDataList")
-    public String testGetTablesDataList() throws Exception {
+    @GetMapping("/getTablesDataList")
+    public String getTablesDataList() throws Exception {
         POIWordUtil poiWordUtil = new POIWordUtil();
         List<LinkedHashMap<String, Object>> tablesDataList = poiWordUtil.getTablesDataList(DOCX_TEMPLATE_FILE_PATH);
         return tablesDataList.toString();
+    }
+
+    @GetMapping("/insertNewEmptyRows")
+    public String insertNewEmptyRows() throws Exception {
+        POIWordUtil poiWordUtil = new POIWordUtil();
+        return poiWordUtil.insertNewEmptyRows(DOCX_TEMPLATE_FILE_PATH,3);
+    }
+
+    @GetMapping("/insertNewNotEmptyRows")
+    public String insertNewNotEmptyRows() throws Exception {
+        POIWordUtil poiWordUtil = new POIWordUtil();
+        List<String> tableHeader = new ArrayList<>();
+        tableHeader.add("name");
+        tableHeader.add("age");
+        tableHeader.add("address");
+
+        List<Map<String, Object>> mapList = new ArrayList<>();//数据库查询获得、
+        Map<String, Object> params = new HashMap<>();
+        params.put("name", "Tom");
+        params.put("age", 18);
+        params.put("address", "成都");
+        Map<String, Object> params2 = new HashMap<>();
+        params2.put("name", "Lily");
+        params2.put("age", 21);
+        params2.put("address", "上海");
+        mapList.add(params);
+        mapList.add(params2);
+        return poiWordUtil.insertNewNotEmptyRows(DOCX_TEMPLATE_FILE_PATH,tableHeader,mapList,1);
     }
 }

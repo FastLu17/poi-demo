@@ -6,16 +6,16 @@ import org.apache.poi.xwpf.usermodel.*;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 import org.springframework.util.StringUtils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
+ * 按需将RunTimeException替换为自定义异常
+ *
  * @author 小66
  * @Description
  * @create 2019-08-09 15:17
@@ -25,44 +25,104 @@ public class POIWordUtil {
     private final String BASE_URL = "C:\\Users\\Administrator\\Desktop\\POI\\";
 
     /**
-     *  默认为第一张表添加数据、
-     * @param filePath
-     * @param tableHeader
-     * @param params
-     * @return
-     * @throws IOException
+     * 为指定index的表添加同属性的空行、
+     *
+     * @param absPath     docx文件绝对路径
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     *                    Tips:** tableHeader 需要 与 params的key相同。(此处不会更改tableHeader,随意命名即可)
+     * @param params      需要填充的数据
+     * @param tableIndex  第 index 张表格需要添加数据、从1开始.
+     * @return absPath
+     * @throws IOException IO
      */
-    public String createNewRowsForTable(String filePath, List<String> tableHeader, List<Map<String, Object>> params) throws IOException {
-        createNewRowsForTable(filePath, tableHeader, params, 0);
-        return "";
-    }
-
-    public String createNewRowsForTable(String filePath, List<String> tableHeader, List<Map<String, Object>> params, int... tableIndexArr) throws IOException {
-        if (!filePath.endsWith(".docx") || !filePath.endsWith(".DOCX"))
+    public String insertNewNotEmptyRows(String absPath, List<String> tableHeader,
+                                        List<Map<String, Object>> params, int tableIndex) throws IOException {
+        if (StringUtils.isEmpty(absPath)) {
+            throw new RuntimeException("文件的绝对路径不能为空");
+        }
+        if (!absPath.endsWith(".docx") && !absPath.endsWith(".DOCX"))
             throw new RuntimeException("无法处理非docx文件");
-        FileInputStream inputStream = new FileInputStream(filePath);
+        if (tableIndex <= 0)
+            throw new RuntimeException("tableIndexArr必须大于等于1");
+
+        FileInputStream inputStream = new FileInputStream(absPath);
         XWPFDocument docx = new XWPFDocument(inputStream);
         List<XWPFTable> tables = docx.getTables();
-        for (int tableIndex : tableIndexArr) {
-            if (tableIndex >= tables.size()) {
-                throw new RuntimeException("文件中表格数量低于" + tableIndex + 1 + "个");
-            }
-            XWPFTable table = tables.get(tableIndex);
-            //新增rows、
+        if (tableIndex - 1 > tables.size()) {
+            throw new RuntimeException("文件中表格数量低于" + tableIndex + "个");
         }
 
-        return "";
+        XWPFTable table = tables.get(tableIndex);
+        insertNotEmptyRows(table, tableHeader, params);
+
+        //正常操作是写入到读取的文件中去、
+        //FileOutputStream outputStream = new FileOutputStream(absPath);
+        FileOutputStream outputStream = new FileOutputStream(BASE_URL + "XWPF测试insertNotEmptyRows.docx");
+        docx.write(outputStream);
+        closeStream(docx, outputStream, inputStream);
+        return absPath;
     }
 
     /**
-     * @param fileName    需要创建的文件名
+     * 默认为第一张表添加同属性的空行、
+     *
+     * @param absPath    docx文件绝对路径
+     * @param addRowsNum 需要添加的行数
+     * @return absPath
+     * @throws IOException IO
+     */
+    public String insertNewEmptyRows(String absPath, int addRowsNum) throws IOException {
+        return insertNewEmptyRows(absPath, addRowsNum, 0);
+    }
+
+    /**
+     * 为指定index的表添加同属性的空行、
+     *
+     * @param absPath       docx文件绝对路径
+     * @param addRowsNum    需要添加的行数
+     * @param tableIndexArr 第 index 张表格需要添加数据、从1开始.
+     * @return absPath
+     * @throws IOException IO
+     */
+    public String insertNewEmptyRows(String absPath, int addRowsNum, Integer... tableIndexArr) throws IOException {
+        if (StringUtils.isEmpty(absPath)) {
+            throw new RuntimeException("文件的绝对路径不能为空");
+        }
+        if (!absPath.endsWith(".docx") && !absPath.endsWith(".DOCX"))
+            throw new RuntimeException("无法处理非docx文件");
+        List<Integer> list = Arrays.stream(tableIndexArr).filter(integer -> integer < 1).collect(Collectors.toList());
+        if (list.size() > 0)
+            throw new RuntimeException("tableIndexArr必须大于等于1");
+        FileInputStream inputStream = new FileInputStream(absPath);
+        XWPFDocument docx = new XWPFDocument(inputStream);
+        List<XWPFTable> tables = docx.getTables();
+        for (int tableIndex : tableIndexArr) {
+            if (tableIndex - 1 > tables.size()) {
+                throw new RuntimeException("文件中表格数量低于" + tableIndex + "个");
+            }
+            XWPFTable table = tables.get(tableIndex);
+            //新增EmptyRows、
+            insertOrRemoveEmptyRows(table, addRowsNum, table.getRows().size());
+        }
+        //正常操作是写入到读取的文件中去、
+        //FileOutputStream outputStream = new FileOutputStream(absPath);
+        FileOutputStream outputStream = new FileOutputStream(BASE_URL + "XWPF测试insertEmptyRows.docx");
+        docx.write(outputStream);
+        closeStream(docx, outputStream, inputStream);
+        return absPath;
+    }
+
+    /**
+     * 创建docx文件并插入一张表格,填充表格内容和数据
+     *
+     * @param fileName    需要生成的文件名
      * @param tableName   文件中的表名
      * @param tableHeader 表格的表头
      * @param params      表格的内容
      * @return 文件路径
      * @throws IOException IO
      */
-    public String dataInsertIntoTable(String fileName, String tableName, List<String> tableHeader, List<Map<String, Object>> params) throws IOException {
+    public String createTableByData(String fileName, String tableName, List<String> tableHeader, List<Map<String, Object>> params) throws IOException {
 
         String filePath = BASE_URL + fileName + ".docx";
         XWPFDocument docx = new XWPFDocument();
@@ -92,7 +152,7 @@ public class POIWordUtil {
         //获取表头
         XWPFTableRow header = tableRows.get(0);
         List<XWPFTableCell> tableCells = header.getTableCells();
-        //设置表头样式和属性
+        //设置表头的样式和属性
         for (int i = 0; i < tableHeader.size(); i++) {
             XWPFTableCell headerCell = tableCells.get(i);
             //垂直居中
@@ -111,6 +171,7 @@ public class POIWordUtil {
             headerPara.setVerticalAlignment(TextAlignment.CENTER);
         }
 
+        //设置表体的样式和属性
         for (int i = 0; i < params.size(); i++) {
             Map<String, Object> param = params.get(i);
             XWPFTableRow tableRow = tableRows.get(i + 1);
@@ -133,8 +194,7 @@ public class POIWordUtil {
 
         FileOutputStream outputStream = new FileOutputStream(filePath);
         docx.write(outputStream);
-        outputStream.close();
-
+        closeStream(docx, outputStream);
         return filePath;
     }
 
@@ -189,9 +249,9 @@ public class POIWordUtil {
         if (StringUtils.isEmpty(absPath)) {
             throw new RuntimeException("文件的绝对路径不能为空");
         }
-        if (!absPath.endsWith(".doc") && !absPath.endsWith(".docx"))
+        if (!absPath.endsWith(".doc") && !absPath.endsWith(".docx") && !absPath.endsWith(".DOC") && !absPath.endsWith(".DOCX"))
             throw new RuntimeException("文件类型必须为'doc'或者'docx'格式");
-        if (absPath.endsWith(".doc")) {
+        if (absPath.endsWith(".doc") || absPath.endsWith(".DOC")) {
             return getDOCTablesDataList(absPath);
         }
         return getDOCXTablesDataList(absPath);
@@ -362,8 +422,8 @@ public class POIWordUtil {
 
         int tableIndex = 0;
         /*
-        *   通过Arrays.asList获取的List、不可以执行list.remove()和list.add()方法、抛出 java.lang.UnsupportedOperationException异常。
-        * */
+         *   通过Arrays.asList获取的List、不可以执行list.remove()和list.add()方法、抛出 java.lang.UnsupportedOperationException异常。
+         * */
         List<Integer> list = Arrays.asList(indexArr);
         list = new ArrayList<>(list);//单独创建一个新的List对象、
         Collections.sort(list);
@@ -423,6 +483,7 @@ public class POIWordUtil {
             }
             tableList.add(tableMap);
         }
+        closeStream(docx, inputStream);
         return tableList;
     }
 
@@ -463,8 +524,169 @@ public class POIWordUtil {
         }
         System.out.println("tableList = " + tableList);
 
-        document.close();
-        inputStream.close();
+        closeStream(document, inputStream);
         return tableList;
+    }
+
+    /**
+     * 复制表格行属性、
+     *
+     * @param sourceRow 来源Row
+     * @param targetRow 目标Row
+     */
+    private void copyProperties(XWPFTableRow sourceRow, XWPFTableRow targetRow) {
+        //复制行属性
+        targetRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr());
+        List<XWPFTableCell> cellList = sourceRow.getTableCells();
+        if (null == cellList) {
+            return;
+        }
+        //添加列、复制列以及列中段落属性
+        XWPFTableCell targetCell;
+        for (XWPFTableCell sourceCell : cellList) {
+            targetCell = targetRow.addNewTableCell();
+            //列属性
+            targetCell.getCTTc().setTcPr(sourceCell.getCTTc().getTcPr());
+            //段落属性
+            targetCell.getParagraphs().get(0).getCTP().setPPr(sourceCell.getParagraphs().get(0).getCTP().getPPr());
+        }
+    }
+
+    /**
+     * @param table   docx文件中的表格
+     * @param add     增加或删除行数 if add>0 增加行 add<0 删除行
+     * @param fromRow 添加开始行位置(fromRow-1是模版行),from >= 1、不允许复制第一行
+     */
+    private void insertOrRemoveEmptyRows(XWPFTable table, int add, int fromRow) {
+        if (add == 0 || table.getRows().size() < 1 || fromRow < 1)
+            return;
+        XWPFTableRow row = table.getRow(fromRow - 1);
+        if (add > 0) {
+            while (add > 0) {
+                copyProperties(row, table.insertNewTableRow(fromRow));
+                add--;
+            }
+        } else {
+            while (add < 0) {
+                table.removeRow(fromRow - 1);
+                add++;
+            }
+        }
+    }
+
+    /**
+     * 不限制插入行数和插入位置、
+     *
+     * @param table       docx文件中的表格
+     * @param add         增加或删除行数 if add>0 增加行 add<0 删除行
+     * @param fromRow     添加开始行位置(fromRow-1是模版行),from >= 1、不允许复制第一行
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     * @param params      新增行的内容
+     */
+    private void insertNotEmptyRows(XWPFTable table, int add, int fromRow, List<String> tableHeader, List<Map<String, Object>> params) {
+        int size = table.getRows().size();
+        if (add <= 0 || size < 1 || fromRow < 1) //不允许复制表头属性
+            return;
+        XWPFTableRow row = table.getRow(fromRow - 1);
+        int count = 0;
+        while (add > 0) {
+            copyProperties(row, table.insertNewTableRow(fromRow));
+            //得到新增的空行、
+            XWPFTableRow newRow = table.getRow(size++);
+            //填充数据
+            Map<String, Object> param = params.get(count);
+            for (int i = 0; i < newRow.getTableCells().size(); i++) {
+                XWPFTableCell cell = newRow.getCell(i);
+                cell.setText(param.get(tableHeader.get(i)).toString());
+            }
+            count++;
+            add--;
+        }
+    }
+
+    /**
+     * 限制插入行数(paras.size()+1)和插入位置(表的最后一行)
+     *
+     * @param table       docx文件中的表格
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     * @param params      新增行的内容、有多少条数据,就新增多少行
+     */
+    private void insertNotEmptyRows(XWPFTable table, List<String> tableHeader, List<Map<String, Object>> params) {
+        int add = params.size();
+        int fromRow = table.getRows().size();
+        int size = table.getRows().size();
+        if (add <= 0 || fromRow < 1) //不允许复制表头属性
+            return;
+        XWPFTableRow row = table.getRow(fromRow - 1);
+        int count = 0;
+        while (add > 0) {
+            copyProperties(row, table.insertNewTableRow(fromRow));
+            //得到新增的空行、
+            XWPFTableRow newRow = table.getRow(size++);
+            //填充数据
+            Map<String, Object> param = params.get(count);
+            for (int i = 0; i < newRow.getTableCells().size(); i++) {
+                XWPFTableCell cell = newRow.getCell(i);
+                /*
+                *   TODO: 两种方式都无法解决，插入n条数据时，前面n-1条的行都是空、第n行显示全部的数据、
+                * */
+//                for (int j = 0; j < cell.getParagraphs().size(); j++) {
+//                    XWPFParagraph xwpfParagraph = cell.getParagraphs().get(j);
+//                    XWPFRun xwpfRun = xwpfParagraph.createRun();
+//                    xwpfRun.setText(param.get(tableHeader.get(i)).toString());
+//                }
+                cell.setText(param.get(tableHeader.get(i)).toString());
+            }
+            count++;
+            add--;
+        }
+    }
+
+    public void closeStream(HWPFDocument document, OutputStream outputStream, InputStream inputStream) throws IOException {
+        if (outputStream != null)
+            outputStream.close();
+        if (document != null) {
+            document.close();
+        }
+        if (inputStream != null)
+            inputStream.close();
+    }
+
+    public void closeStream(HWPFDocument document, InputStream inputStream) throws IOException {
+        if (document != null)
+            document.close();
+        if (inputStream != null)
+            inputStream.close();
+    }
+
+    public void closeStream(HWPFDocument document, OutputStream outputStream) throws IOException {
+        if (document != null)
+            document.close();
+        if (outputStream != null)
+            outputStream.close();
+    }
+
+    public void closeStream(XWPFDocument document, OutputStream outputStream, InputStream inputStream) throws IOException {
+        if (outputStream != null)
+            outputStream.close();
+        if (document != null) {
+            document.close();
+        }
+        if (inputStream != null)
+            inputStream.close();
+    }
+
+    public void closeStream(XWPFDocument document, InputStream inputStream) throws IOException {
+        if (document != null)
+            document.close();
+        if (inputStream != null)
+            inputStream.close();
+    }
+
+    public void closeStream(XWPFDocument document, OutputStream outputStream) throws IOException {
+        if (document != null)
+            document.close();
+        if (outputStream != null)
+            outputStream.close();
     }
 }
