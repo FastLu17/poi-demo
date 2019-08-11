@@ -1,33 +1,54 @@
 package com.lxf.poi.util;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * 按需将RunTimeException替换为自定义异常
+ * 按需将RunTimeException替换为自定义异常、
+ * <p>
+ * 按需添加异步的方法、类似asyncAddNotEmptyRows()
  *
  * @author 小66
  * @Description
  * @create 2019-08-09 15:17
  **/
+@Component
+@Slf4j
 public class POIWordUtil {
 
     private final String BASE_URL = "C:\\Users\\Administrator\\Desktop\\POI\\";
 
     /**
-     * 为指定index的表添加同属性的空行、
+     * 异步调用：常用于无返回值的方法、
+     * 使用Future对象用作异步返回值,如果执行了get()则会一直阻塞,无法进行异步调用、
+     */
+    @Async("taskExecutor")
+    public void asyncAddNotEmptyRows(String absPath, List<String> tableHeader,
+                                     List<Map<String, Object>> params) throws IOException {
+        String filePath = addNotEmptyRows(absPath, tableHeader, params);
+        //需要通过WebSocket反馈给用户后台异步任务已完成.
+    }
+
+    /**
+     * 为指定index的表在表的fromRow行后添加add条数据
      *
      * @param absPath     docx文件绝对路径
+     * @param add         添加的总行数
+     * @param fromRow     添加开始的位置
      * @param tableHeader 表头的名称(第一行的单元格内容)
      *                    Tips:** tableHeader 需要 与 params的key相同。(此处不会更改tableHeader,随意命名即可)
      * @param params      需要填充的数据
@@ -35,8 +56,9 @@ public class POIWordUtil {
      * @return absPath
      * @throws IOException IO
      */
-    public String insertNewNotEmptyRows(String absPath, List<String> tableHeader,
-                                        List<Map<String, Object>> params, int tableIndex) throws IOException {
+    public String addNotEmptyRows(String absPath, int add, int fromRow, List<String> tableHeader,
+                                  List<Map<String, Object>> params, int tableIndex) throws IOException {
+        long startTime = System.currentTimeMillis();
         if (StringUtils.isEmpty(absPath)) {
             throw new RuntimeException("文件的绝对路径不能为空");
         }
@@ -52,15 +74,67 @@ public class POIWordUtil {
             throw new RuntimeException("文件中表格数量低于" + tableIndex + "个");
         }
 
-        XWPFTable table = tables.get(tableIndex);
-        insertNotEmptyRows(table, tableHeader, params);
+        XWPFTable table = tables.get(tableIndex - 1);
+        if (fromRow == 0) //表最后添加数据
+            insertNotEmptyRows(table, add, table.getRows().size(), tableHeader, params);
+        else
+            insertNotEmptyRows(table, add, fromRow, tableHeader, params);
 
         //正常操作是写入到读取的文件中去、
         //FileOutputStream outputStream = new FileOutputStream(absPath);
         FileOutputStream outputStream = new FileOutputStream(BASE_URL + "XWPF测试insertNotEmptyRows.docx");
         docx.write(outputStream);
         closeStream(docx, outputStream, inputStream);
+
+        long endTime = System.currentTimeMillis();
+        log.info("totalTime = {} 秒", (endTime - startTime) / 1000);
         return absPath;
+    }
+
+    /**
+     * 不传入第几张表时,默认第一张表添加数据、
+     *
+     * @param absPath     docx文件绝对路径
+     * @param add         添加的总行数
+     * @param fromRow     添加开始的位置
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     * @param params      需要填充的数据
+     * @return absPath
+     * @throws IOException IO
+     */
+    public String addNotEmptyRows(String absPath, int add, int fromRow, List<String> tableHeader,
+                                  List<Map<String, Object>> params) throws IOException {
+        return addNotEmptyRows(absPath, add, fromRow, tableHeader, params, 1);
+    }
+
+    /**
+     * 为指定index的表在表的最后添加params.size()+1条数据
+     *
+     * @param absPath     docx文件绝对路径
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     *                    Tips:** tableHeader 需要 与 params的key相同。(此处不会更改tableHeader,随意命名即可)
+     * @param params      需要填充的数据
+     * @param tableIndex  第 index 张表格需要添加数据、从1开始.
+     * @return absPath
+     * @throws IOException IO
+     */
+    public String addNotEmptyRows(String absPath, List<String> tableHeader,
+                                  List<Map<String, Object>> params, int tableIndex) throws IOException {
+        return addNotEmptyRows(absPath, params.size(), 0, tableHeader, params, tableIndex);
+    }
+
+    /**
+     * 不传入第几张表时,默认第一张表添加数据、
+     *
+     * @param absPath     docx文件绝对路径
+     * @param tableHeader 表头的名称(第一行的单元格内容)
+     * @param params      需要填充的数据
+     * @return absPath
+     * @throws IOException IO
+     */
+    public String addNotEmptyRows(String absPath, List<String> tableHeader,
+                                  List<Map<String, Object>> params) throws IOException {
+        return addNotEmptyRows(absPath, params.size(), 0, tableHeader, params, 1);
     }
 
     /**
@@ -71,8 +145,8 @@ public class POIWordUtil {
      * @return absPath
      * @throws IOException IO
      */
-    public String insertNewEmptyRows(String absPath, int addRowsNum) throws IOException {
-        return insertNewEmptyRows(absPath, addRowsNum, 0);
+    public String addEmptyRows(String absPath, int addRowsNum) throws IOException {
+        return addEmptyRows(absPath, addRowsNum, 1);
     }
 
     /**
@@ -84,7 +158,7 @@ public class POIWordUtil {
      * @return absPath
      * @throws IOException IO
      */
-    public String insertNewEmptyRows(String absPath, int addRowsNum, Integer... tableIndexArr) throws IOException {
+    public String addEmptyRows(String absPath, int addRowsNum, Integer... tableIndexArr) throws IOException {
         if (StringUtils.isEmpty(absPath)) {
             throw new RuntimeException("文件的绝对路径不能为空");
         }
@@ -115,14 +189,18 @@ public class POIWordUtil {
     /**
      * 创建docx文件并插入一张表格,填充表格内容和数据
      *
-     * @param fileName    需要生成的文件名
-     * @param tableName   文件中的表名
-     * @param tableHeader 表格的表头
-     * @param params      表格的内容
+     * @param fileName       需要生成的文件名
+     * @param tableName      文件中的表名
+     * @param tableHeader    表格的表头,Tips:** tableHeader 需要 与 params的key相同。(表格第一行的内容是由此对象填充,按需传递)
+     * @param params         表格的内容
+     * @param fontFamily     字体样式
+     * @param tableWidth     表格宽度,例如:8000
+     * @param headerFontSize 字体大小(表头)
+     * @param bodyFontSize   字体大小(表体)
      * @return 文件路径
      * @throws IOException IO
      */
-    public String createTableByData(String fileName, String tableName, List<String> tableHeader, List<Map<String, Object>> params) throws IOException {
+    public String createTableByData(String fileName, String tableName, List<String> tableHeader, List<Map<String, Object>> params, String fontFamily, int tableWidth, int headerFontSize, int bodyFontSize) throws IOException {
 
         String filePath = BASE_URL + fileName + ".docx";
         XWPFDocument docx = new XWPFDocument();
@@ -141,7 +219,7 @@ public class POIWordUtil {
         CTTblPr ctTblPr = table.getCTTbl().addNewTblPr();
         //设置表格宽度
         CTTblWidth width = ctTblPr.addNewTblW();
-        width.setW(BigInteger.valueOf(8000));
+        width.setW(BigInteger.valueOf(tableWidth));
         //设置表格宽带为固定、
         width.setType(STTblWidth.DXA);//STTblWidth.AUTO:自动-->宽度无效.
 
@@ -161,10 +239,10 @@ public class POIWordUtil {
             XWPFRun headerRun = headerPara.createRun();//XWPFRun是最小的单位.(文本)
             headerRun.setText(tableHeader.get(i));
             headerRun.setBold(true);
-            headerRun.setFontSize(16);
-            headerRun.setFontFamily("SimHei");//黑体
+            headerRun.setFontSize(headerFontSize);
+            headerRun.setFontFamily(fontFamily);
             headerRun.setColor("66FF66");
-            headerRun.setShadow(true);//阴影
+            headerRun.setShadow(true);//阴影-->按需设置
             //水平居中
             headerPara.setAlignment(ParagraphAlignment.CENTER);
             //垂直居中
@@ -183,9 +261,9 @@ public class POIWordUtil {
                 XWPFRun cellRun = cellParagraph.createRun();
                 cellRun.setText(param.get(tableHeader.get(j)).toString());
                 cellRun.setBold(false);
-                cellRun.setFontSize(12);
-                cellRun.setFontFamily("宋体");//黑体
-                cellRun.setUnderline(UnderlinePatterns.SINGLE);
+                cellRun.setFontSize(bodyFontSize);
+                cellRun.setFontFamily(fontFamily);
+                cellRun.setUnderline(UnderlinePatterns.SINGLE);//下划线-->按需设置
 
                 cellParagraph.setVerticalAlignment(TextAlignment.CENTER);
                 cellParagraph.setAlignment(ParagraphAlignment.CENTER);
@@ -246,11 +324,11 @@ public class POIWordUtil {
      * @throws IOException IO异常
      */
     public List<LinkedHashMap<String, Object>> getTablesDataList(String absPath) throws IOException {
-        if (StringUtils.isEmpty(absPath)) {
+        if (StringUtils.isEmpty(absPath))
             throw new RuntimeException("文件的绝对路径不能为空");
-        }
         if (!absPath.endsWith(".doc") && !absPath.endsWith(".docx") && !absPath.endsWith(".DOC") && !absPath.endsWith(".DOCX"))
             throw new RuntimeException("文件类型必须为'doc'或者'docx'格式");
+
         if (absPath.endsWith(".doc") || absPath.endsWith(".DOC")) {
             return getDOCTablesDataList(absPath);
         }
@@ -260,7 +338,7 @@ public class POIWordUtil {
 
 
     /**
-     * 替换docx文件段落里面的变量
+     * 替换docx文件段落里面的${}变量
      *
      * @param paragraph 要替换的段落
      * @param params    参数
@@ -436,7 +514,7 @@ public class POIWordUtil {
                 tableIndex++;
                 continue;
             }
-            for (int i = 1; i < table.numRows(); i++) {//表头没有变量,不需要遍历、
+            for (int i = 0; i < table.numRows(); i++) {//也许表头存在${}变量、少数情况、
                 TableRow tableRow = table.getRow(i);
                 params.keySet().forEach(key -> tableRow.replaceText("${" + key + "}", params.get(key).toString()));
             }
@@ -495,7 +573,6 @@ public class POIWordUtil {
      * @throws IOException IO
      */
     private List<LinkedHashMap<String, Object>> getDOCTablesDataList(String absPath) throws IOException {
-
         File file = new File(absPath);
         FileInputStream inputStream = new FileInputStream(file);
         HWPFDocument document = new HWPFDocument(inputStream);
@@ -513,8 +590,10 @@ public class POIWordUtil {
                     TableCell tableCell = row.getCell(cell);
                     // tableCell.text(): 表示单元格内容、
                     tableMap.put(i + "-" + cell, tableCell.text().trim());
-                    // tableCell.numParagraphs()==1、因此不需要再进行遍历、
-//                    System.out.println("tableCell.numParagraphs() = " + tableCell.numParagraphs());
+                    // tableCell.numParagraphs() == 1; 因此不需要再进行遍历、
+                    /*
+                     *   HWPFDocument 不存在类似XWPFRun的对象、
+                     * */
 //                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
 //                        Paragraph paragraph = tableCell.getParagraph(para);
 //                    }
@@ -522,19 +601,18 @@ public class POIWordUtil {
             }
             tableList.add(tableMap);
         }
-        System.out.println("tableList = " + tableList);
 
         closeStream(document, inputStream);
         return tableList;
     }
 
     /**
-     * 复制表格行属性、
+     * 为表格创建空行,并为该行复制同样的表格行属性、
      *
      * @param sourceRow 来源Row
      * @param targetRow 目标Row
      */
-    private void copyProperties(XWPFTableRow sourceRow, XWPFTableRow targetRow) {
+    private void copyPropertiesAndEmptyRows(XWPFTableRow sourceRow, XWPFTableRow targetRow) {
         //复制行属性
         targetRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr());
         List<XWPFTableCell> cellList = sourceRow.getTableCells();
@@ -553,17 +631,64 @@ public class POIWordUtil {
     }
 
     /**
+     * 为表格创建非空行,并为该行复制同样的表格行属性。同时完成内容填充
+     *
+     * @param sourceRow   来源Row
+     * @param targetRow   目标Row
+     * @param tableHeader 需要被填充的列,Tips:** tableHeader 需要 与 params的key相同。
+     * @param param       填充的数据
+     */
+    private void copyPropertiesAndNonEmptyRows(XWPFTableRow sourceRow, XWPFTableRow targetRow, List<String> tableHeader, Map<String, Object> param) {
+        //复制行属性
+        targetRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr());
+        List<XWPFTableCell> cellList = sourceRow.getTableCells();
+        if (cellList == null) {
+            return;
+        }
+        //添加列、复制列以及列中段落属性
+        XWPFTableCell targetCell;
+        for (int i = 0; i < cellList.size(); i++) {
+            targetCell = targetRow.addNewTableCell();
+            //列属性
+            targetCell.getCTTc().setTcPr(cellList.get(i).getCTTc().getTcPr());
+
+            //段落属性
+            List<XWPFParagraph> paragraphList = cellList.get(i).getParagraphs();
+            if (isNotEmpty(paragraphList)) {
+                targetCell.getParagraphs().get(0).getCTP().setPPr(paragraphList.get(0).getCTP().getPPr());
+                List<XWPFRun> xwpfRunList = paragraphList.get(0).getRuns();
+                if (isNotEmpty(xwpfRunList)) {
+                    //字体属性
+                    XWPFRun cellR = targetCell.getParagraphs().get(0).createRun();
+                    cellR.setBold(xwpfRunList.get(0).isBold());
+                    cellR.setFontFamily(xwpfRunList.get(0).getFontFamily());
+                    cellR.setFontSize(xwpfRunList.get(0).getFontSize());
+                    //TODO: 设置单元格内容(需要在此处设置内容,才可以copy字体样式)
+                    cellR.setText(param.get(tableHeader.get(i)).toString());
+                } else
+                    targetCell.setText(param.get(tableHeader.get(i)).toString());
+            } else
+                targetCell.setText(param.get(tableHeader.get(i)).toString());
+        }
+    }
+
+    /**
      * @param table   docx文件中的表格
      * @param add     增加或删除行数 if add>0 增加行 add<0 删除行
      * @param fromRow 添加开始行位置(fromRow-1是模版行),from >= 1、不允许复制第一行
      */
     private void insertOrRemoveEmptyRows(XWPFTable table, int add, int fromRow) {
-        if (add == 0 || table.getRows().size() < 1 || fromRow < 1)
-            return;
+        int size = table.getRows().size();
+        if (add == 0 || fromRow > size || size < 1 || fromRow < 1)
+            throw new RuntimeException("add参数不可等于0,fromRow参数必须大于0或fromRow超出表格总数");
         XWPFTableRow row = table.getRow(fromRow - 1);
         if (add > 0) {
             while (add > 0) {
-                copyProperties(row, table.insertNewTableRow(fromRow));
+                /*
+                 *   执行换为多线程copy、
+                 * */
+                Executors.newCachedThreadPool().execute(() -> copyPropertiesAndEmptyRows(row, table.insertNewTableRow(fromRow)));
+//                copyPropertiesAndEmptyRows(row, table.insertNewTableRow(fromRow));
                 add--;
             }
         } else {
@@ -581,25 +706,28 @@ public class POIWordUtil {
      * @param add         增加或删除行数 if add>0 增加行 add<0 删除行
      * @param fromRow     添加开始行位置(fromRow-1是模版行),from >= 1、不允许复制第一行
      * @param tableHeader 表头的名称(第一行的单元格内容)
+     *                    Tips:** tableHeader的值 需要 与 params的key相同。
      * @param params      新增行的内容
      */
     private void insertNotEmptyRows(XWPFTable table, int add, int fromRow, List<String> tableHeader, List<Map<String, Object>> params) {
         int size = table.getRows().size();
-        if (add <= 0 || size < 1 || fromRow < 1) //不允许复制表头属性
-            return;
+        if (add <= 0 || fromRow > size || size <= 1 || fromRow < 1) //不允许复制表头属性
+            throw new RuntimeException("add参数不可等于0,fromRow参数必须大于0或fromRow超出表格总数");
         XWPFTableRow row = table.getRow(fromRow - 1);
-        int count = 0;
+        int index = params.size() - 1;
+        //换为多线程的方式来执行copy新增、
         while (add > 0) {
-            copyProperties(row, table.insertNewTableRow(fromRow));
-            //得到新增的空行、
-            XWPFTableRow newRow = table.getRow(size++);
-            //填充数据
-            Map<String, Object> param = params.get(count);
-            for (int i = 0; i < newRow.getTableCells().size(); i++) {
-                XWPFTableCell cell = newRow.getCell(i);
-                cell.setText(param.get(tableHeader.get(i)).toString());
+            if (add > params.size()) {
+                Executors.newCachedThreadPool().execute(() -> copyPropertiesAndEmptyRows(row, table.insertNewTableRow(fromRow)));
+//                copyPropertiesAndEmptyRows(row, table.insertNewTableRow(fromRow));
+                add--;
+                continue;
             }
-            count++;
+            Map<String, Object> param = params.get(index);
+            Executors.newCachedThreadPool().execute(() -> copyPropertiesAndNonEmptyRows(row, table.insertNewTableRow(fromRow), tableHeader, param));
+//            copyPropertiesAndNonEmptyRows(row, table.insertNewTableRow(fromRow), tableHeader, param);
+
+            index--;
             add--;
         }
     }
@@ -609,36 +737,52 @@ public class POIWordUtil {
      *
      * @param table       docx文件中的表格
      * @param tableHeader 表头的名称(第一行的单元格内容)
+     *                    Tips:** tableHeader 需要 与 params的key相同。
      * @param params      新增行的内容、有多少条数据,就新增多少行
      */
     private void insertNotEmptyRows(XWPFTable table, List<String> tableHeader, List<Map<String, Object>> params) {
-        int add = params.size();
+        int index = params.size() - 1;//如果使用index=0; index++ -->填充的数据顺序会变为逆序、
         int fromRow = table.getRows().size();
-        int size = table.getRows().size();
-        if (add <= 0 || fromRow < 1) //不允许复制表头属性
-            return;
+//        int size = table.getRows().size();
+        if (fromRow <= 1) //不允许复制表头属性
+            throw new RuntimeException("table至少需要有2行");
         XWPFTableRow row = table.getRow(fromRow - 1);
-        int count = 0;
-        while (add > 0) {
-            copyProperties(row, table.insertNewTableRow(fromRow));
-            //得到新增的空行、
-            XWPFTableRow newRow = table.getRow(size++);
-            //填充数据
-            Map<String, Object> param = params.get(count);
-            for (int i = 0; i < newRow.getTableCells().size(); i++) {
-                XWPFTableCell cell = newRow.getCell(i);
-                /*
-                *   TODO: 两种方式都无法解决，插入n条数据时，前面n-1条的行都是空、第n行显示全部的数据、
-                * */
-//                for (int j = 0; j < cell.getParagraphs().size(); j++) {
-//                    XWPFParagraph xwpfParagraph = cell.getParagraphs().get(j);
-//                    XWPFRun xwpfRun = xwpfParagraph.createRun();
-//                    xwpfRun.setText(param.get(tableHeader.get(i)).toString());
+        while (index >= 0) {
+            /*
+             *   先复制属性、再填充内容,会出现BUG。而且效率更低、
+             * */
+//            copyPropertiesAndEmptyRows(row, table.insertNewTableRow(fromRow));
+//            //得到新增的空行、
+//            XWPFTableRow newRow = table.getRow(size++);
+//            //填充数据
+//            Map<String, Object> param = params.get(count);
+//            for (int i = 0; i < newRow.getTableCells().size(); i++) {
+//                XWPFTableCell cell = newRow.getCell(i);
+//                /*
+//                 *   TODO: 两种方式都无法解决 --> 插入n条数据时，前面n-1条的行都是空、第n行显示全部的数据、
+//                 *      1、为XWPFTableCell创建XWPFRun对象后,再setText
+//                 *      2、直接XWPFTableCell对象setText
+//                 * */
+//                /*
+//                *   1、 for (int j = 0; j < cell.getParagraphs().size(); j++) {
+//                        XWPFParagraph xwpfParagraph = cell.getParagraphs().get(j);
+//                        XWPFRun xwpfRun = xwpfParagraph.createRun();
+//                        xwpfRun.setText(param.get(tableHeader.get(i)).toString());
 //                }
-                cell.setText(param.get(tableHeader.get(i)).toString());
-            }
-            count++;
-            add--;
+//                * */
+//                /*
+//                *   2、 cell.setText(param.get(tableHeader.get(i)).toString());
+//                * */
+//
+//            }
+            /*
+             *   换为多线程方式copy属性、
+             * */
+            int finalIndex = index;
+            Executors.newCachedThreadPool().execute(() -> copyPropertiesAndNonEmptyRows(row, table.insertNewTableRow(fromRow), tableHeader, params.get(finalIndex)));
+            //copyPropertiesAndNonEmptyRows(row, table.insertNewTableRow(fromRow), tableHeader, params.get(index));
+
+            index--;
         }
     }
 
@@ -688,5 +832,9 @@ public class POIWordUtil {
             document.close();
         if (outputStream != null)
             outputStream.close();
+    }
+
+    private boolean isNotEmpty(Collection collection) {
+        return collection != null && collection.size() > 0;
     }
 }

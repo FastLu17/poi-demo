@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+
+<generatorConfiguration>
+    <!--<properties resource="generator.properties" />-->
+
+    <!--  targetRuntime：用于指定生成的代码的运行环境(MyBatis3/MyBatis3Simple)
+            MyBatis3:默认值,mapper.xml文件中有SQL语句
+            MyBatis3Simple：不会生成与Example类相关的方法,mapper.xml中不会生成SQL语句-->
+    <context id="MysqlContext" targetRuntime="MyBatis3Simple" defaultModelType="flat" >
+        <!-- 生成的Java文件的编码 -->
+        <property name="javaFileEncoding" value="UTF-8"/>
+
+        <!--配置是否使用通用 Mapper 自带的注释扩展,默认:true-->
+        <!--<property name="useMapperCommentGenerator" value="false"/>-->
+
+        <!-- 使用自带序列化插件 -->
+        <plugin type="org.mybatis.generator.plugins.SerializablePlugin"/>
+
+        <!-- 整合lombok -->
+        <plugin type="com.chrm.mybatis.generator.plugins.LombokPlugin" >
+            <property name="hasLombok" value="true"/>
+        </plugin>
+
+        <!--通用 Mapper 插件,可以生成带注解的实体类-->
+        <plugin type="tk.mybatis.mapper.generator.MapperPlugin">
+            <property name="mappers" value="tk.mybatis.mapper.common.Mapper"/>
+            <!--<property name="forceAnnotation" value="true"/>-->
+            <!-- 区分大小写 -->
+            <property name="caseSensitive" value="true"/>
+            <!-- 处理SQL中的 ` 符号 -->
+            <property name="beginningDelimiter" value="`"/>
+            <property name="endingDelimiter" value="`"/>
+        </plugin>
+
+        <commentGenerator>
+            <!-- 阻止生成注释,默认为false  -->
+            <property name="suppressAllComments" value="true"/>
+            <!-- 阻止生成注释的时间戳,默认为false-->
+            <property name="suppressDate" value="true"/>
+        </commentGenerator>
+
+
+        <!-- jdbc 连接配置:8.0.16 mysql -->
+        <jdbcConnection driverClass="com.mysql.cj.jdbc.Driver"
+                        connectionURL="jdbc:mysql://localhost:3306/poi?characterEncoding=utf8&amp;serverTimezone=UTC&amp;nullCatalogMeansCurrent=true"
+                        userId="root"
+                        password="123456">
+        </jdbcConnection>
+
+        <javaTypeResolver>
+            <!-- 是否使用bigDecimal， false可自动转化以下类型（Long, Integer, Short, etc.） -->
+            <property name="forceBigDecimals" value="false"/>
+        </javaTypeResolver>
+
+        <!-- 生成实体类的包名和位置 ，targetPackage指的是包名,targetProject值得是路径位置-->
+        <javaModelGenerator targetPackage="com.lxf.poi.entity"
+                            targetProject="src/main/java">
+            <!-- 对数据库查询结果进行trim()操作,默认false -->
+            <property name="trimStrings" value="true"/>
+        </javaModelGenerator>
+
+        <!-- 对于生成的mapper.xml所在目录 -->
+        <sqlMapGenerator targetPackage="mappers"
+                         targetProject="src/main/resources">
+            <property name="useJavaType" value="true"/>
+        </sqlMapGenerator>
+
+        <!-- 配置mapper对应的java映射、Dao层 -->
+        <javaClientGenerator targetPackage="com.lxf.poi.mapper"
+                             targetProject="src/main/java"
+                             type="XMLMAPPER"/>
+
+        <!--tableName支持%，表示全部生成。user_%:表示部分匹配-->
+        <table tableName="poi.user_info" enableInsert="true">
+            <!-- 配置主键策略 -->
+            <!--<generatedKey column="test_id" sqlStatement="MySQL" identity="true"/>-->
+        </table>
+    </context>
+</generatorConfiguration>

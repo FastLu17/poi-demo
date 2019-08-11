@@ -1,9 +1,11 @@
-package com.lxf.poi.apache.controller;
+package com.lxf.poi.controller;
 
+import com.lxf.poi.mapper.UserInfoMapper;
 import com.lxf.poi.util.POIWordUtil;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,6 +19,13 @@ import java.util.*;
  **/
 @RestController
 public class POIController {
+
+    @Autowired
+    private POIWordUtil wordUtil;
+
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
+    @Autowired
+    private UserInfoMapper mapper;
 
     private final String BASE_DIRECTORY_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
     private final String DOC_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "HWPF测试模板.doc";
@@ -237,7 +246,7 @@ public class POIController {
 
         r1.addTab();
 
-        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "XWPF测试读取.docx");
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "XWPF测试新建DOCX文件.docx");
         doc.write(outputStream);
 
         doc.close();
@@ -292,8 +301,8 @@ public class POIController {
         mapList.add(params);
         mapList.add(params2);
 
-        poiWordUtil.createTableByData("XWPF测试新建表格", "用户信息表", tableHeader, mapList);
-        return "";
+        return poiWordUtil.createTableByData("XWPF测试新建表格", "用户信息表",
+                tableHeader, mapList, "Consolas", 8000, 18, 14);
     }
 
     @GetMapping("/resetAllDOC")
@@ -315,7 +324,7 @@ public class POIController {
         FileOutputStream outputStream = new FileOutputStream(
                 BASE_DIRECTORY_PATH + "HWPF测试restParagraphDOC.doc");
         document.write(outputStream);
-        poiWordUtil.closeStream(document,outputStream,inputStream);
+        poiWordUtil.closeStream(document, outputStream, inputStream);
         return text;
     }
 
@@ -329,28 +338,38 @@ public class POIController {
     @GetMapping("/insertNewEmptyRows")
     public String insertNewEmptyRows() throws Exception {
         POIWordUtil poiWordUtil = new POIWordUtil();
-        return poiWordUtil.insertNewEmptyRows(DOCX_TEMPLATE_FILE_PATH,3);
+        return poiWordUtil.addEmptyRows(DOCX_TEMPLATE_FILE_PATH, 3);
     }
 
-    @GetMapping("/insertNewNotEmptyRows")
-    public String insertNewNotEmptyRows() throws Exception {
-        POIWordUtil poiWordUtil = new POIWordUtil();
+    @GetMapping("/addNotEmptyRows")
+    public String addNotEmptyRows() throws Exception {
         List<String> tableHeader = new ArrayList<>();
         tableHeader.add("name");
         tableHeader.add("age");
         tableHeader.add("address");
+        /*
+         *   Map包含name,age,address三个Key、
+         * */
+        List<Map<String, Object>> mapList = mapper.selectAllResultMap();//4.6W数据
 
-        List<Map<String, Object>> mapList = new ArrayList<>();//数据库查询获得、
-        Map<String, Object> params = new HashMap<>();
-        params.put("name", "Tom");
-        params.put("age", 18);
-        params.put("address", "成都");
-        Map<String, Object> params2 = new HashMap<>();
-        params2.put("name", "Lily");
-        params2.put("age", 21);
-        params2.put("address", "上海");
-        mapList.add(params);
-        mapList.add(params2);
-        return poiWordUtil.insertNewNotEmptyRows(DOCX_TEMPLATE_FILE_PATH,tableHeader,mapList,1);
+        //同步调用,海量数据-->效率低下,还可能出现OutOfMemoryError异常、
+        wordUtil.addNotEmptyRows(DOCX_TEMPLATE_FILE_PATH, tableHeader, mapList);
+        return "已导出" + mapList.size() + 1 + "行数据到表格中";
+    }
+
+    @GetMapping("/asyncAddNotEmptyRows")
+    public String asyncAddNotEmptyRows() throws Exception {
+        List<String> tableHeader = new ArrayList<>();
+        tableHeader.add("name");
+        tableHeader.add("age");
+        tableHeader.add("address");
+        /*
+         *   Map包含name,age,address三个Key、
+         * */
+        List<Map<String, Object>> mapList = mapper.selectAllResultMap();//4.6W数据
+
+        //异步调用、
+        wordUtil.asyncAddNotEmptyRows(DOCX_TEMPLATE_FILE_PATH, tableHeader, mapList);
+        return "已获得" + mapList.size() + 1 + "行数据,正在导出到表格中";
     }
 }
