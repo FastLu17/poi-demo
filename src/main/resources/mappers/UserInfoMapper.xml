@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lxf.poi.mapper.UserInfoMapper">
+    <resultMap id="BaseResultMap" type="com.lxf.poi.entity.UserInfo">
+        <!--
+          WARNING - @mbg.generated
+        -->
+        <result column="name" jdbcType="VARCHAR" property="name"/>
+        <result column="age" jdbcType="INTEGER" property="age"/>
+        <result column="address" jdbcType="VARCHAR" property="address"/>
+    </resultMap>
+    <select id="selectAllResultMap" resultType="java.util.HashMap">
+        SELECT *
+        FROM user_info;
+    </select>
+</mapper>
