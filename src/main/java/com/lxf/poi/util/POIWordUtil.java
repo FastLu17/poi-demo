@@ -21,7 +21,14 @@ import java.util.stream.Collectors;
  * 按需将RunTimeException替换为自定义异常、
  * <p>
  * 按需添加异步的方法、类似asyncAddNotEmptyRows()
- *
+ * <p>
+ * HWPFDocument修改文本信息：使用(Range、Paragraph、CharacterRun中的)insertBefore()和insertAfter()方法可以修改相应文本信息。
+ * <p>
+ * XWPFDocument修改文本信息：从XWPFParagraph中，可以获取组成文本信息的XWPFRun要素。
+ *                          如果要添加新文本，调用createRun()方法或者文本末端添加一个XWPFRun要素，
+ *                          insertNewRun(int)可以paragraph的指定位置添加一个XWPFRun要素。一旦有了XWPFRun，
+ *                          可以调用其setText(String)方法修改文本内容，如果想增加一个空白要素，如tabs或则line breaks，
+ *                          需要调用addTab()和addCarriageReturn()方法。
  * @author 小66
  * @Description
  * @create 2019-08-09 15:17
@@ -203,8 +210,8 @@ public class POIWordUtil {
     public String createTableByData(String fileName, String tableName, List<String> tableHeader, List<Map<String, Object>> params, String fontFamily, int tableWidth, int headerFontSize, int bodyFontSize) throws IOException {
 
         String filePath = BASE_URL + fileName + ".docx";
-        XWPFDocument docx = new XWPFDocument();
 
+        XWPFDocument docx = new XWPFDocument();
         //创建标题段落
         XWPFParagraph titlePara = docx.createParagraph();
         XWPFRun titleRun = titlePara.createRun();
@@ -592,7 +599,8 @@ public class POIWordUtil {
                     tableMap.put(i + "-" + cell, tableCell.text().trim());
                     // tableCell.numParagraphs() == 1; 因此不需要再进行遍历、
                     /*
-                     *   HWPFDocument 不存在类似XWPFRun的对象、
+                     *   HWPFDocument使用(Range、Paragraph、CharacterRun中的)insertBefore()和insertAfter()方法可以修改相应文本信息。
+                     *   CharacterRun 类似XWPFRun对象、
                      * */
 //                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
 //                        Paragraph paragraph = tableCell.getParagraph(para);

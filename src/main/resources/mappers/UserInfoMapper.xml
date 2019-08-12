@@ -8,9 +8,15 @@
         <result column="name" jdbcType="VARCHAR" property="name"/>
         <result column="age" jdbcType="INTEGER" property="age"/>
         <result column="address" jdbcType="VARCHAR" property="address"/>
+        <result column="sort" jdbcType="INTEGER" property="sort"/>
     </resultMap>
     <select id="selectAllResultMap" resultType="java.util.HashMap">
         SELECT *
         FROM user_info;
+    </select>
+    <select id="getSort" resultType="java.lang.Integer">
+        select sort
+        from user_info
+        where name = 'Tom'
     </select>
 </mapper>

@@ -8,4 +8,6 @@ import java.util.Map;
 
 public interface UserInfoMapper extends Mapper<UserInfo> {
     List<Map<String, Object>> selectAllResultMap();
+
+    Integer getSort();
 }

@@ -1,5 +1,8 @@
 package com.lxf.poi.controller;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.lxf.poi.mapper.UserInfoMapper;
 import com.lxf.poi.util.POIWordUtil;
 import org.apache.poi.hwpf.HWPFDocument;
@@ -18,7 +21,7 @@ import java.util.*;
  * @create 2019-08-08 10:43
  **/
 @RestController
-public class POIController {
+public class POIWordController {
 
     @Autowired
     private POIWordUtil wordUtil;
@@ -39,37 +42,7 @@ public class POIController {
      */
     @GetMapping("tables")
     public List<LinkedHashMap<String, Object>> getTables() throws Exception {
-        File file = new File(BASE_DIRECTORY_PATH + "HWPF测试写入.doc");
-        FileInputStream inputStream = new FileInputStream(file);
-        HWPFDocument document = new HWPFDocument(inputStream);
-        Range range = document.getRange();
-        TableIterator tableIterator = new TableIterator(range);
-
-        List<LinkedHashMap<String, Object>> tableList = new ArrayList<>();
-        while (tableIterator.hasNext()) {
-            //使用: row-column 作为 key、(需要有序,使用LinkedHashMap)
-            LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
-            Table table = tableIterator.next();
-            for (int i = 0; i < table.numRows(); i++) {
-                TableRow row = table.getRow(i);//TableRow表示:表格的一整行.
-                for (int cell = 0; cell < row.numCells(); cell++) {
-                    TableCell tableCell = row.getCell(cell);
-                    // tableCell.text(): 表示单元格内容、
-                    tableMap.put(i + "-" + cell, tableCell.text().trim());
-                    // tableCell.numParagraphs()==1、因此不需要再进行遍历、
-//                    System.out.println("tableCell.numParagraphs() = " + tableCell.numParagraphs());
-//                    for (int para = 0; para < tableCell.numParagraphs(); para++) {
-//                        Paragraph paragraph = tableCell.getParagraph(para);
-//                    }
-                }
-            }
-            tableList.add(tableMap);
-        }
-        System.out.println("tableList = " + tableList);
-
-        document.close();
-        inputStream.close();
-        return tableList;
+        return wordUtil.getTablesDataList(BASE_DIRECTORY_PATH + "HWPF测试写入.doc");
     }
 
     /**
@@ -115,12 +88,16 @@ public class POIController {
         Table table = range.insertTableBefore((short) column, row);
         for (int i = 0; i < row; i++) {
             TableRow tableRow = table.getRow(i);//获取 行
+            if (i == 0) {
+                tableRow.setTableHeader(true);
+                tableRow.setRowJustification(100);
+            }
             for (int j = 0; j < column; j++) {
                 TableCell cell = tableRow.getCell(j);//获取 单元格、
-//                Map<String, Object> map = mapList.get(i);
-//                Set<String> keys = map.keySet();
-//                cell.replaceText("AAA", true);
-                cell.getParagraph(0).getCharacterRun(0).insertBefore("AAAA");
+                CharacterRun run = cell.getParagraph(0).getCharacterRun(0);
+                run.setFontSize(16);
+                run.insertBefore("AAAA");
+                run.setBold(true);
             }
         }
         FileOutputStream outputStream = new FileOutputStream(file);
@@ -371,5 +348,70 @@ public class POIController {
         //异步调用、
         wordUtil.asyncAddNotEmptyRows(DOCX_TEMPLATE_FILE_PATH, tableHeader, mapList);
         return "已获得" + mapList.size() + 1 + "行数据,正在导出到表格中";
+    }
+
+    @GetMapping("/jsonData")
+    public String getJsonData() {
+        String strJson = "{\"a\":\"1\",\"b\":\"2\",\"c\":\"3\",\"d\":[{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"},{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"}]}";
+//        String strJson = "{\"d\":[[{\"aa\":[{\"map\":\"  map  map  \"}]},{\"bb\":\"  bb  bb  \"}],[{\"a2a\":\"  a2a  a2a  \"},{\"b2b\":\"  b2b  b2b  \"}]]}";
+        Map<String, Object> params = new HashMap<>();
+        params.put("a1", "aaa  aaa  ");
+        params.put("a2", "  a222aa  aaa  ");
+        params.put("a3", "   a333aa  aaa  ");
+        Map<String, Object> map = new HashMap<>();
+        map.put("b1", "bb bb  ");
+        map.put("b2", "  b222b bb  ");
+        map.put("b3", "    b3333b bb  ");
+        JSONArray jsonArray = new JSONArray();
+        jsonArray.add(map);
+        params.put("list", jsonArray);
+
+        String mapString = JSONObject.toJSONString(params);
+
+//        JSONObject jsonObjectMap = new JSONObject(params); //这种方式生成的JSONObject无法正常解析、
+        JSONObject jsonObject = JSON.parseObject(mapString);
+        System.out.println("jsonObject = " + jsonObject);
+        trimJsonObject(jsonObject);
+        System.out.println("jsonObject After = " + jsonObject);
+        return "AA";
+    }
+
+    /**
+     * 利用fastJson解析请求JSON数据,去除请求参数两端的空格、
+     * TODO: 不可出现{"aa":["str1","  str2  str2  "]}这种格式的数据、list无法trim()后覆盖当前值、
+     * @param params JSON数据、
+     */
+    private void trimJsonObject(Map<String, Object> params) {
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            if (entry.getValue() instanceof String) {
+                params.put(entry.getKey(), entry.getValue().toString().trim());
+                continue;
+            }
+            //JSONObject是Map的实现类、但不是Map,如果value是Map则无法解析、
+            if (entry.getValue() instanceof JSONObject) {
+                trimJsonObject((JSONObject) entry.getValue());
+                continue;
+            }
+            //JSONArray是List的实现类、但不是List,如果value是List则无法解析、
+            if (entry.getValue() instanceof JSONArray) {
+                trimJsonArray((JSONArray) entry.getValue());
+            }
+        }
+    }
+    /**
+     * TODO:判断obj为String类型,List无法覆盖当前值,因此不进行判断。
+     * trim的字符串数据、不可写在JSONArray当中,否则list无法进行trim()后覆盖当前值、
+     * @param jsonArray
+     */
+    private void trimJsonArray(JSONArray jsonArray) {
+        for (Object obj : jsonArray) {
+            if (obj instanceof JSONObject) {
+                trimJsonObject((JSONObject) obj);
+                continue;
+            }
+            if (obj instanceof JSONArray) {
+                trimJsonArray((JSONArray) obj);
+            }
+        }
     }
 }
