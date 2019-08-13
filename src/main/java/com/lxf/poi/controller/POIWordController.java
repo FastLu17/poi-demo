@@ -353,8 +353,7 @@ public class POIWordController {
     @GetMapping("/jsonData")
     public String getJsonData() {
 //        String strJson = "{\"a\":\"1\",\"b\":\"2\",\"c\":\"3\",\"d\":[{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"},{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"}]}";
-//        String strJson = "{\"d\":[[{\"aa\":[{\"map\":\"  map  map  \"}]},{\"bb\":\"  bb  bb  \"}],[{\"a2a\":\"  a2a  a2a  \"},{\"b2b\":\"  b2b  b2b  \"}]]}";
-        String strJson = "{\"aa\":[\"str1\",\"  str2  str2  \"]}";
+        String strJson = "{\"aa\":[\"str1\",\"  str2  str2  \"],\"d\":[[{\"aa\":[{\"map\":\"  map  map  \"}]},{\"bb\":\"  bb  bb  \"}],[{\"a2a\":\"  a2a  a2a  \"},{\"b2b\":\"  b2b  b2b  \"}]]}";
         Map<String, Object> params = new HashMap<>();
         params.put("a1", "aaa  aaa  ");
         params.put("a2", "  a222aa  aaa  ");

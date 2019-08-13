@@ -63,11 +63,11 @@
         <!-- poi end -->
 
         <!-- easyExcel -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>easyexcel</artifactId>
-            <version>1.1.2-beta5</version>
-        </dependency>
+        <!--<dependency>-->
+            <!--<groupId>com.alibaba</groupId>-->
+            <!--<artifactId>easyexcel</artifactId>-->
+            <!--<version>1.1.2-beta5</version>-->
+        <!--</dependency>-->
 
         <dependency>
             <groupId>tk.mybatis</groupId>
@@ -126,11 +126,11 @@
                         <version>4.0.3</version>
                     </dependency>
                     <!-- 整合Lombok插件,需要本地mvn.install此jar包 -->
-                    <!--<dependency>-->
-                        <!--<groupId>com.chrm</groupId>-->
-                        <!--<artifactId>mybatis-generator-lombok-plugin</artifactId>-->
-                        <!--<version>1.0-SNAPSHOT</version>-->
-                    <!--</dependency>-->
+                    <dependency>
+                        <groupId>com.chrm</groupId>
+                        <artifactId>mybatis-generator-lombok-plugin</artifactId>
+                        <version>1.0-SNAPSHOT</version>
+                    </dependency>
                 </dependencies>
             </plugin>
         </plugins>

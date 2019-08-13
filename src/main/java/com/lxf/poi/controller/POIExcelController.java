@@ -3,11 +3,14 @@ package com.lxf.poi.controller;
 import com.lxf.poi.util.POIExcelUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.hssf.extractor.ExcelExtractor;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.hssf.usermodel.*;
+import org.apache.poi.hssf.util.CellReference;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellUtil;
+import org.apache.poi.ss.util.RegionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author 小66
@@ -27,37 +32,83 @@ public class POIExcelController {
     @Autowired
     private POIExcelUtil excelUtil;
 
-    private final String BASE_FILE_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
+    private final String BASE_DIRECTORY_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
+    private final String XLS_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "HSSF测试模板.xls";
+    private final String XLSX_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "XSSF测试模板.xlsx";
 
     @GetMapping("createXls")
     public String createXls() throws Exception {
-//        POIFSFileSystem system = new POIFSFileSystem(new File(BASE_FILE_PATH + "HSSF测试read.xls"));
+//        POIFSFileSystem system = new POIFSFileSystem(new File(BASE_DIRECTORY_PATH + "HSSF测试read.xls"));
 //        Workbook book = WorkbookFactory.create(system);
 //        HSSFWorkbook workbook = new HSSFWorkbook(system);  //多种方式可以创建Workbook对象、
         HSSFWorkbook workbook = new HSSFWorkbook();
-        Sheet sheet = workbook.createSheet();
+
+        HSSFDataFormat format = workbook.createDataFormat();//格式化
+
+        HSSFSheet sheet = workbook.createSheet("sheet");
+        sheet.setSelected(false);
+        HSSFSheet sheetSelected = workbook.createSheet("sheetSelected");
+        sheetSelected.setSelected(true);//设置默认被选中、没生效
+
+        sheet.setAutoFilter(new CellRangeAddress(1,1,1,1));//
+
+        //设置缩放比例
+        sheet.setZoom(115);// 表示:115%
+
+        sheet.createFreezePane(1, 1);//设置冻结窗格--行和列(不受滚动影响)
+
+        //设置头尾(没效果)
+        HSSFHeader header = sheet.getHeader();
+        HSSFFooter footer = sheet.getFooter();
+        header.setRight(HSSFHeader.font("Stencil-Normal", "Italic") +
+                HSSFHeader.fontSize((short) 16) + "Right w/ Stencil-Normal Italic font and size 16");
+        footer.setRight("Footer Right");
+
         Row row = sheet.createRow(1);
-        row.setHeightInPoints(30);
+        /*
+         *   RowHeightInPoints = 12.75
+         *   RowHeight = 255
+         *   20倍的关系、
+         * */
+        float defaultHeightInPoints = sheet.getDefaultRowHeightInPoints();//获取默认行高、
+        sheet.autoSizeColumn(1);//设置某一列自根据内容自动调整宽度、
+        row.setHeightInPoints(2 * defaultHeightInPoints);//设置两倍行高、
 
-        createCell(workbook, row, 0, HorizontalAlignment.CENTER, VerticalAlignment.BOTTOM, "Align It");
-        createCell(workbook, row, 1, HorizontalAlignment.CENTER_SELECTION, VerticalAlignment.BOTTOM, "Align It");
-        createCell(workbook, row, 2, HorizontalAlignment.FILL, VerticalAlignment.CENTER, "Align It");
-        createCell(workbook, row, 3, HorizontalAlignment.GENERAL, VerticalAlignment.CENTER, "Align It");
-        createCell(workbook, row, 4, HorizontalAlignment.JUSTIFY, VerticalAlignment.JUSTIFY, "Align It");
-        createCell(workbook, row, 5, HorizontalAlignment.LEFT, VerticalAlignment.TOP, "Align It");
-        createCell(workbook, row, 6, HorizontalAlignment.RIGHT, VerticalAlignment.TOP, "Align It");
+        //设置打印区域
+        workbook.setPrintArea(0, 0, 9, 0, 9);
 
-        FileOutputStream outputStream = new FileOutputStream(BASE_FILE_PATH + "HSSF测试create.xls");
+        Font font = getFont(workbook, 200, "Consolas",IndexedColors.RED.index);
+        Font font2 = getFont(workbook, 300, "黑体",IndexedColors.GREEN.index);
+
+        //富文本、
+        HSSFRichTextString richString = new HSSFRichTextString("Hello, World!");
+        richString.applyFont(0, 6, font);
+        richString.applyFont(6, 13, font2);
+
+        createCell(workbook, font, row, 0, HorizontalAlignment.CENTER, VerticalAlignment.BOTTOM, "Align It");
+        createCell(workbook, font, row, 1, HorizontalAlignment.CENTER_SELECTION, VerticalAlignment.BOTTOM, "Align It Align It");
+        createCell(workbook, font, row, 2, HorizontalAlignment.FILL, VerticalAlignment.CENTER, "Align It");
+        createCell(workbook, font, row, 3, HorizontalAlignment.GENERAL, VerticalAlignment.CENTER, "Align It");
+        createCell(workbook, font, row, 4, HorizontalAlignment.JUSTIFY, VerticalAlignment.JUSTIFY, "Align It");
+        createCell(workbook, font, row, 5, HorizontalAlignment.LEFT, VerticalAlignment.TOP, "Align It");
+        createCell(workbook, font, row, 6, HorizontalAlignment.RIGHT, VerticalAlignment.TOP, "Align It");
+        Cell cell = row.createCell(7);
+        cell.setCellValue(richString);
+
+        row.setZeroHeight(false);//是否设置此行高度为0、隐藏(hidden)
+
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试create.xls");
         workbook.write(outputStream);
 
         excelUtil.closeStream(workbook, outputStream);
 
-        return BASE_FILE_PATH + "HSSF测试create.xls";
+        return BASE_DIRECTORY_PATH + "HSSF测试create.xls";
     }
 
     @GetMapping("readXls")
     public String readXls() throws Exception {
-        POIFSFileSystem system = new POIFSFileSystem(new File(BASE_FILE_PATH + "HSSF测试read.xls"));
+        POIFSFileSystem system = new POIFSFileSystem(new File(XLS_TEMPLATE_FILE_PATH));
         Workbook book = WorkbookFactory.create(system);
 //        simpleIterator(book);
         simpleIterator(book);
@@ -67,7 +118,7 @@ public class POIExcelController {
 
     @GetMapping("getXlsText")
     public String getXlsText() throws Exception {
-        POIFSFileSystem system = new POIFSFileSystem(new File(BASE_FILE_PATH + "HSSF测试read.xls"));
+        POIFSFileSystem system = new POIFSFileSystem(new File(XLS_TEMPLATE_FILE_PATH));
         HSSFWorkbook workbook = new HSSFWorkbook(system);
         //Text Extraction：文字抽取
         ExcelExtractor extractor = new ExcelExtractor(workbook);
@@ -79,11 +130,108 @@ public class POIExcelController {
 
     @GetMapping("mergingCells")
     public void createMergingCells() throws Exception {
-        mergingCells(new CellRangeAddress(1, 1, 0, 1), BASE_FILE_PATH + "HSSF测试read.xls");
+        mergingCells(new CellRangeAddress(1, 1, 0, 1), XLS_TEMPLATE_FILE_PATH);
 
     }
 
-    private void createCell(Workbook wb, Row row, int column, HorizontalAlignment halign, VerticalAlignment valign, String value) {
+    /**
+     *  条件格式化、ConditionalFormatting
+     * @param sheet
+     */
+    public void formating(Sheet sheet){
+        SheetConditionalFormatting sheetCF = sheet.getSheetConditionalFormatting();
+
+        ConditionalFormattingRule rule1 = sheetCF.createConditionalFormattingRule(ComparisonOperator.EQUAL, "0");
+        ConditionalFormattingRule rule2 = sheetCF.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "0","10");
+        FontFormatting fontFmt = rule1.createFontFormatting();
+        fontFmt.setFontStyle(true, false);
+        fontFmt.setFontColorIndex(IndexedColors.DARK_RED.index);
+    }
+
+    /**
+     * 展示HSSF工具类的使用、
+     * HSSFRegionUtil和HSSFCellUtil被弃用、
+     */
+    @GetMapping("utils")
+    public void utils() throws Exception {
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        HSSFSheet sheet = workbook.createSheet();
+
+        CellRangeAddress rangeAddress = new CellRangeAddress(0, 9, 0, 9);
+        RegionUtil.setBorderBottom(BorderStyle.THIN.getCode(), rangeAddress, sheet);
+        RegionUtil.setBottomBorderColor(IndexedColors.RED.index, rangeAddress, sheet);
+        RegionUtil.setBorderRight(BorderStyle.MEDIUM.getCode(), rangeAddress, sheet);
+        RegionUtil.setRightBorderColor(IndexedColors.GREEN.index, rangeAddress, sheet);
+
+        CellStyle style = workbook.createCellStyle();
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        HSSFRow row = sheet.createRow(0);
+        HSSFRow row1 = sheet.createRow(1);
+        Cell cell_00 = CellUtil.createCell(row, 0, "CellUtil--00", style);
+        Cell cell_01 = CellUtil.createCell(row, 1, "CellUtil--01", style);
+        Cell cell_10 = CellUtil.createCell(row1, 0, "CellUtil--10", style);
+        Cell cell_11 = CellUtil.createCell(row1, 1, "CellUtil--11", style);
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试utils.xls");
+        workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    @GetMapping("createFreezePane")
+    public void createFreezePane() throws Exception {
+        Workbook wb = new HSSFWorkbook();
+        Sheet sheet1 = wb.createSheet();
+        Sheet sheet2 = wb.createSheet();
+        Sheet sheet3 = wb.createSheet();
+
+        //设置固定行和列的窗格、(滚动一直会展示,多用于表头)
+        sheet1.createFreezePane(0, 1, 0, 1);//固定行、
+        sheet2.createFreezePane(1, 0, 1, 0);//固定列、
+        sheet3.createFreezePane(2, 2);
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试freezePane.xls");
+        wb.write(outputStream);
+
+        excelUtil.closeStream(wb, outputStream);
+    }
+
+    @GetMapping("setCellProperties")
+    public void setCellProperties() throws Exception {
+        Workbook workbook = new HSSFWorkbook();  // OR new HSSFWorkbook()
+        Sheet sheet = workbook.createSheet("Sheet1");
+        Map<String, Object> properties = new HashMap<>();
+
+        properties.put(CellUtil.BORDER_TOP, BorderStyle.MEDIUM);
+        properties.put(CellUtil.BORDER_BOTTOM, BorderStyle.MEDIUM);
+        properties.put(CellUtil.BORDER_LEFT, BorderStyle.MEDIUM);
+        properties.put(CellUtil.BORDER_RIGHT, BorderStyle.MEDIUM);
+
+        properties.put(CellUtil.TOP_BORDER_COLOR, IndexedColors.RED.index);
+        properties.put(CellUtil.BOTTOM_BORDER_COLOR, IndexedColors.RED.index);
+        properties.put(CellUtil.LEFT_BORDER_COLOR, IndexedColors.RED.index);
+        properties.put(CellUtil.RIGHT_BORDER_COLOR, IndexedColors.RED.index);
+
+        // 应用Border属性到Cell、
+        Row row = sheet.createRow(1);
+        Cell cell1 = CellUtil.createCell(row, 1, "Hello");
+        Cell cell2 = CellUtil.createCell(row, 2, "World");
+        /*
+         *   通过Properties设置的属性、会与现有的单元格属性合并在一起,
+         *       如果有相同的属性,则替换为Properties中的属性、
+         * */
+        CellUtil.setCellStyleProperties(cell1, properties);
+        CellUtil.setCellStyleProperties(cell2, properties);
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试cellStyleProperties.xls");
+        workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    private void createCell(Workbook wb, Font font, Row row, int column, HorizontalAlignment halign, VerticalAlignment valign, String value) {
         Cell cell = row.createCell(column);
         cell.setCellValue(value);
 
@@ -92,6 +240,7 @@ public class POIExcelController {
         cellStyle.setAlignment(halign);
         cellStyle.setVerticalAlignment(valign);
 
+        //设置边框属性
         cellStyle.setBorderBottom(BorderStyle.THIN);
         cellStyle.setBottomBorderColor(IndexedColors.YELLOW.getIndex());
         cellStyle.setBorderLeft(BorderStyle.THIN);
@@ -102,8 +251,14 @@ public class POIExcelController {
         cellStyle.setTopBorderColor(IndexedColors.RED.getIndex());
 
         //设置填充属性
-        cellStyle.setFillBackgroundColor(IndexedColors.AQUA.getIndex());
-        cellStyle.setFillPattern(FillPatternType.BIG_SPOTS);
+//        cellStyle.setFillBackgroundColor(IndexedColors.AQUA.getIndex());
+//        cellStyle.setFillPattern(FillPatternType.BIG_SPOTS);
+
+        //设置字体属性
+        cellStyle.setFont(font);
+
+        //设置换行
+        cellStyle.setWrapText(true);
 
         cell.setCellStyle(cellStyle);
     }
@@ -123,11 +278,13 @@ public class POIExcelController {
                 short lastCellNum = row.getLastCellNum();
                 log.info("lastCellNum = {}", lastCellNum);//获取最后一列的位置、
                 for (Cell cell : row) {//cellIterator
-                    //                    cell.getStringCellValue();
+//                    cell.getStringCellValue();
 //                    cell.getNumericCellValue();
+                    CellReference cellRef = new CellReference(row.getRowNum(), cell.getColumnIndex());
+                    log.info("cellRef.formatAsString = {}", cellRef.formatAsString());
                     String formatValue = formatter.formatCellValue(cell);//不进行formatter、则需要对单元格内容进行判断后再获取、
                     CellAddress address = cell.getAddress();//获取当前单元格的坐标
-                    log.info("row = {}, column = {}, value = {}", address.getRow(), address.getColumn(), cell.getStringCellValue());
+                    log.info("row = {}, column = {}, value = {}", address.getRow(), address.getColumn(), formatValue);
                 }
             }
         }
@@ -141,5 +298,31 @@ public class POIExcelController {
         FileOutputStream outputStream = new FileOutputStream(path);
         workbook.write(outputStream);
         excelUtil.closeStream(workbook, outputStream, inputStream);
+    }
+
+    /**
+     * 不要循环创建字体样式,尽量重用、
+     *
+     * @param workbook
+     * @param fontHeight 类似字体大小、但是与fontSize不一样。 200 height <==> 10 size
+     * @param fontName   字体名称
+     * @param color      eg:IndexedColors.GREEN.index
+     * @return
+     */
+    public Font getFont(Workbook workbook, int fontHeight, String fontName, short color) {
+        Font font = workbook.createFont();
+//        font.setFontHeightInPoints((short)500);//目前没看到效果
+        font.setFontName(fontName);
+        font.setBold(true);
+        font.setFontHeight((short) fontHeight);
+        font.setItalic(true);//斜体
+        font.setStrikeout(true);//删除线
+        font.setColor(color);
+
+        //设置字体颜色
+        font.setColor(IndexedColors.RED.index);
+//        font.setColor(HSSFColor.RED.index);
+
+        return font;
     }
 }
