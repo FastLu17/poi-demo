@@ -2,6 +2,7 @@ package com.lxf.poi.controller;
 
 import com.lxf.poi.util.POIExcelUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.hssf.extractor.ExcelExtractor;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.hssf.util.CellReference;
@@ -15,9 +16,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -50,7 +55,7 @@ public class POIExcelController {
         HSSFSheet sheetSelected = workbook.createSheet("sheetSelected");
         sheetSelected.setSelected(true);//设置默认被选中、没生效
 
-        CellRangeAddress range = CellRangeAddress.valueOf("C5:F200");//不同的方式创建range、
+        CellRangeAddress range = CellRangeAddress.valueOf("C5:F20");//不同的方式创建range、
         CellRangeAddress rangeAddress = new CellRangeAddress(1, 1, 1, 1);
         sheet.setAutoFilter(rangeAddress);//设置自动过滤、
 
@@ -79,8 +84,8 @@ public class POIExcelController {
         //设置打印区域
         workbook.setPrintArea(0, 0, 9, 0, 9);
 
-        Font font = getFont(workbook, 200, "Consolas",IndexedColors.RED.index);
-        Font font2 = getFont(workbook, 300, "黑体",IndexedColors.GREEN.index);
+        Font font = getFont(workbook, 200, "Consolas", IndexedColors.RED.index);
+        Font font2 = getFont(workbook, 300, "黑体", IndexedColors.GREEN.index);
 
         //富文本、
         HSSFRichTextString richString = new HSSFRichTextString("Hello, World!");
@@ -137,14 +142,15 @@ public class POIExcelController {
     }
 
     /**
-     *  条件格式化、ConditionalFormatting
+     * 条件格式化、ConditionalFormatting
+     *
      * @param sheet
      */
-    public void formating(Sheet sheet){
+    public void formating(Sheet sheet) {
         SheetConditionalFormatting sheetCF = sheet.getSheetConditionalFormatting();
 
         ConditionalFormattingRule rule1 = sheetCF.createConditionalFormattingRule(ComparisonOperator.EQUAL, "0");
-        ConditionalFormattingRule rule2 = sheetCF.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "0","10");
+        ConditionalFormattingRule rule2 = sheetCF.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "0", "10");
         FontFormatting fontFmt = rule1.createFontFormatting();
         fontFmt.setFontStyle(true, false);
         fontFmt.setFontColorIndex(IndexedColors.DARK_RED.index);
@@ -159,11 +165,16 @@ public class POIExcelController {
         HSSFWorkbook workbook = new HSSFWorkbook();
         HSSFSheet sheet = workbook.createSheet();
 
-        CellRangeAddress rangeAddress = new CellRangeAddress(0, 9, 0, 9);
+        CellRangeAddress rangeAddress = CellRangeAddress.valueOf("C5:F20");
+//        CellRangeAddress rangeAddress = new CellRangeAddress(1, 9, 1, 9);
         RegionUtil.setBorderBottom(BorderStyle.THIN.getCode(), rangeAddress, sheet);
         RegionUtil.setBottomBorderColor(IndexedColors.RED.index, rangeAddress, sheet);
         RegionUtil.setBorderRight(BorderStyle.MEDIUM.getCode(), rangeAddress, sheet);
         RegionUtil.setRightBorderColor(IndexedColors.GREEN.index, rangeAddress, sheet);
+        RegionUtil.setBorderTop(BorderStyle.THIN.getCode(), rangeAddress, sheet);
+        RegionUtil.setTopBorderColor(IndexedColors.RED.index, rangeAddress, sheet);
+        RegionUtil.setBorderLeft(BorderStyle.MEDIUM.getCode(), rangeAddress, sheet);
+        RegionUtil.setLeftBorderColor(IndexedColors.GREEN.index, rangeAddress, sheet);
 
         CellStyle style = workbook.createCellStyle();
         style.setAlignment(HorizontalAlignment.CENTER);
@@ -177,6 +188,114 @@ public class POIExcelController {
         Cell cell_11 = CellUtil.createCell(row1, 1, "CellUtil--11", style);
 
         FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试utils.xls");
+        workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    /**
+     * 画简单的形状、常用来插入图片、
+     *
+     * @throws Exception
+     */
+    @GetMapping("drawShapes")
+    public void drawShapes() throws Exception {
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        HSSFSheet sheet = workbook.createSheet();
+        //画图的顶级管理器(元老)，一个sheet只能获取一个、
+        HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
+
+        //创建锚对象： 255:单元格默认高度、 1023:单元格默认宽带、
+        HSSFClientAnchor anchorLine = new HSSFClientAnchor(0, 0, 1023, 255, (short) 1, 0, (short) 2, 1);
+        HSSFSimpleShape shape = patriarch.createSimpleShape(anchorLine);
+        shape.setShapeType(HSSFSimpleShape.OBJECT_TYPE_LINE);
+
+        /*
+         *   画椭圆
+         * */
+        HSSFClientAnchor anchorOval = new HSSFClientAnchor(0, 0, 1023, 255, (short) 1, 3, (short) 2, 4);
+        HSSFSimpleShape shapeOval = patriarch.createSimpleShape(anchorOval);
+        shapeOval.setShapeType(HSSFSimpleShape.OBJECT_TYPE_OVAL);
+
+        /*
+         *   输入框
+         * */
+        HSSFClientAnchor anchorTextBox = new HSSFClientAnchor(0, 0, 1023, 255, (short) 4, 1, (short) 5, 2);
+        HSSFTextbox textBox = patriarch.createTextbox(anchorTextBox);
+        textBox.setLineStyle(HSSFShape.LINESTYLE_SOLID);
+        HSSFRichTextString richTextString = new HSSFRichTextString("This is a test");
+        richTextString.applyFont(getFont(workbook, 200, "Consolas", IndexedColors.RED.index));
+        textBox.setString(richTextString);
+        textBox.setVerticalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
+        textBox.setHorizontalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
+        textBox.setFillColor(IndexedColors.GREEN.index);//背景色始终为黑色,不设置就是白色、
+
+        //插入图片
+        URL url = new URL("http://p20.qhimgs3.com/dr/240_240_/t011c15f8c12e731c01.jpg?t=1558300397");
+        BufferedImage read = ImageIO.read(url);
+        ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
+        ImageIO.write(read, "JPEG", byteArrayOS);
+        byte[] bytes = byteArrayOS.toByteArray();
+
+        int pictureIndex = workbook.addPicture(bytes, Workbook.PICTURE_TYPE_JPEG);
+        HSSFClientAnchor anchorPicture = new HSSFClientAnchor(0, 0, 1023, 255, (short) 7, 1, (short) 9, 2);
+        patriarch.createPicture(anchorPicture, pictureIndex);
+        read.flush();
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试drawShapes.xls");
+        workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    /**
+     * 插入图片到Excel中、
+     *
+     * @throws Exception
+     */
+    @GetMapping("pictures")
+    public void pictures() throws Exception {
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        HSSFSheet sheet = workbook.createSheet();
+        //画图的顶级管理器(元老)，一个sheet只能获取一个、
+        HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
+        //插入图片
+        URL url = new URL("http://p20.qhimgs3.com/dr/240_240_/t011c15f8c12e731c01.jpg?t=1558300397");
+        BufferedImage read = ImageIO.read(url);
+        ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
+        ImageIO.write(read, "JPEG", byteArrayOS);
+        byte[] bytes = byteArrayOS.toByteArray();
+
+        int pictureIndex = workbook.addPicture(bytes, Workbook.PICTURE_TYPE_JPEG);
+        HSSFClientAnchor anchorPicture = new HSSFClientAnchor(0, 0, 1023, 255, (short) 7, 1, (short) 8, 3);
+        //开始画图片、
+        patriarch.createPicture(anchorPicture, pictureIndex);
+        read.flush();
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试pictures.xls");
+        workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    /**
+     *  超链接引入图片、
+     */
+    @GetMapping("hyperlink")
+    public void hyperlink()throws Exception{
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
+        hyperlink.setShortFilename("驴子");
+        hyperlink.setAddress("http://p20.qhimgs3.com/dr/240_240_/t011c15f8c12e731c01.jpg?t=1558300397");
+        HSSFSheet sheet = workbook.createSheet();
+        HSSFCell cell = sheet.createRow(0).createCell(0);
+        HSSFCellStyle style = workbook.createCellStyle();
+        Font font = getFont(workbook, 200, "Consolas", IndexedColors.BLUE.index);
+        style.setFont(font);
+        cell.setHyperlink(hyperlink);
+        cell.setCellValue("图片链接");
+
+        FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试hyperlink.xls");
         workbook.write(outputStream);
 
         excelUtil.closeStream(workbook, outputStream);
@@ -202,8 +321,8 @@ public class POIExcelController {
 
     @GetMapping("setCellProperties")
     public void setCellProperties() throws Exception {
-        Workbook workbook = new HSSFWorkbook();  // OR new HSSFWorkbook()
-        Sheet sheet = workbook.createSheet("Sheet1");
+        Workbook workbook = new HSSFWorkbook();
+        Sheet sheet = workbook.createSheet();
         Map<String, Object> properties = new HashMap<>();
 
         properties.put(CellUtil.BORDER_TOP, BorderStyle.MEDIUM);
@@ -308,7 +427,7 @@ public class POIExcelController {
      * @param workbook
      * @param fontHeight 类似字体大小、但是与fontSize不一样。 200 height <==> 10 size
      * @param fontName   字体名称
-     * @param color      eg:IndexedColors.GREEN.index
+     * @param color      eg:IndexedColors.GREEN.index,HSSFColor.RED.index
      * @return
      */
     public Font getFont(Workbook workbook, int fontHeight, String fontName, short color) {
@@ -318,12 +437,11 @@ public class POIExcelController {
         font.setBold(true);
         font.setFontHeight((short) fontHeight);
         font.setItalic(true);//斜体
-        font.setStrikeout(true);//删除线
-        font.setColor(color);
+//        font.setStrikeout(true);//删除线
+        font.setUnderline(Font.U_SINGLE);
 
         //设置字体颜色
-        font.setColor(IndexedColors.RED.index);
-//        font.setColor(HSSFColor.RED.index);
+        font.setColor(color);
 
         return font;
     }
