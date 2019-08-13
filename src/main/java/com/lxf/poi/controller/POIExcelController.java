@@ -50,7 +50,9 @@ public class POIExcelController {
         HSSFSheet sheetSelected = workbook.createSheet("sheetSelected");
         sheetSelected.setSelected(true);//设置默认被选中、没生效
 
-        sheet.setAutoFilter(new CellRangeAddress(1,1,1,1));//
+        CellRangeAddress range = CellRangeAddress.valueOf("C5:F200");//不同的方式创建range、
+        CellRangeAddress rangeAddress = new CellRangeAddress(1, 1, 1, 1);
+        sheet.setAutoFilter(rangeAddress);//设置自动过滤、
 
         //设置缩放比例
         sheet.setZoom(115);// 表示:115%
