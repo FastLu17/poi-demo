@@ -352,8 +352,9 @@ public class POIWordController {
 
     @GetMapping("/jsonData")
     public String getJsonData() {
-        String strJson = "{\"a\":\"1\",\"b\":\"2\",\"c\":\"3\",\"d\":[{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"},{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"}]}";
+//        String strJson = "{\"a\":\"1\",\"b\":\"2\",\"c\":\"3\",\"d\":[{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"},{\"a1\":\"  aa  aa  \",\"a2\":\"  a2a  a2a  \",\"a3\":\"  a33a  a33a  33\"}]}";
 //        String strJson = "{\"d\":[[{\"aa\":[{\"map\":\"  map  map  \"}]},{\"bb\":\"  bb  bb  \"}],[{\"a2a\":\"  a2a  a2a  \"},{\"b2b\":\"  b2b  b2b  \"}]]}";
+        String strJson = "{\"aa\":[\"str1\",\"  str2  str2  \"]}";
         Map<String, Object> params = new HashMap<>();
         params.put("a1", "aaa  aaa  ");
         params.put("a2", "  a222aa  aaa  ");
@@ -369,7 +370,8 @@ public class POIWordController {
         String mapString = JSONObject.toJSONString(params);
 
 //        JSONObject jsonObjectMap = new JSONObject(params); //这种方式生成的JSONObject无法正常解析、
-        JSONObject jsonObject = JSON.parseObject(mapString);
+//        JSONObject jsonObject = JSON.parseObject(mapString);
+        JSONObject jsonObject = JSONObject.parseObject(strJson);
         System.out.println("jsonObject = " + jsonObject);
         trimJsonObject(jsonObject);
         System.out.println("jsonObject After = " + jsonObject);
@@ -378,7 +380,7 @@ public class POIWordController {
 
     /**
      * 利用fastJson解析请求JSON数据,去除请求参数两端的空格、
-     * TODO: 不可出现{"aa":["str1","  str2  str2  "]}这种格式的数据、list无法trim()后覆盖当前值、
+     *
      * @param params JSON数据、
      */
     private void trimJsonObject(Map<String, Object> params) {
@@ -398,20 +400,44 @@ public class POIWordController {
             }
         }
     }
+
     /**
-     * TODO:判断obj为String类型,List无法覆盖当前值,因此不进行判断。
-     * trim的字符串数据、不可写在JSONArray当中,否则list无法进行trim()后覆盖当前值、
+     * List覆盖当前index的值、需要使用fori的循环方式进行、
+     *      否则抛出:java.util.ConcurrentModificationException: null
      * @param jsonArray
      */
     private void trimJsonArray(JSONArray jsonArray) {
-        for (Object obj : jsonArray) {
-            if (obj instanceof JSONObject) {
-                trimJsonObject((JSONObject) obj);
+        for (int i = 0; i < jsonArray.size(); i++) {
+            if (jsonArray.get(i) instanceof String) {
+                Object remove = jsonArray.remove(i);//返回被删除的对象、
+                jsonArray.add(i, remove.toString().trim());
                 continue;
             }
-            if (obj instanceof JSONArray) {
-                trimJsonArray((JSONArray) obj);
+            if (jsonArray.get(i) instanceof JSONObject) {
+                trimJsonObject((JSONObject) jsonArray.get(i));
+                continue;
+            }
+            if (jsonArray.get(i) instanceof JSONArray) {
+                trimJsonArray((JSONArray) jsonArray.get(i));
             }
         }
+        /*
+         * TODO:这样循环时处理remove()和add()-->抛出异常:java.util.ConcurrentModificationException: null
+         * */
+//        for (Object obj : jsonArray) {
+//            if (obj instanceof String) {
+//                int index = jsonArray.indexOf(obj);
+//                boolean remove = jsonArray.remove(obj);//返回boolean值、
+//                jsonArray.add(index, obj.toString().trim());
+//                continue;
+//            }
+//            if (obj instanceof JSONObject) {
+//                trimJsonObject((JSONObject) obj);
+//                continue;
+//            }
+//            if (obj instanceof JSONArray) {
+//                trimJsonArray((JSONArray) obj);
+//            }
+//        }
     }
 }
