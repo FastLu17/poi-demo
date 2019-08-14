@@ -23,10 +23,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.URL;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * @author 小66
@@ -36,12 +33,15 @@ import java.util.Map;
 @Slf4j
 public class POIExcelController {
 
-    @Autowired
-    private POIExcelUtil excelUtil;
+    private final POIExcelUtil excelUtil;
 
     private final String BASE_DIRECTORY_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
     private final String XLS_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "HSSF测试模板.xls";
-    private final String XLSX_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "XSSF测试模板.xlsx";
+
+    @Autowired
+    public POIExcelController(POIExcelUtil excelUtil) {
+        this.excelUtil = excelUtil;
+    }
 
     @GetMapping("createXls")
     public String createXls() throws Exception {
@@ -127,9 +127,31 @@ public class POIExcelController {
     @GetMapping("readXls")
     public String readXls() throws Exception {
         POIFSFileSystem system = new POIFSFileSystem(new File(XLS_TEMPLATE_FILE_PATH));
-        Workbook book = WorkbookFactory.create(system);
-//        simpleIterator(book);
-        simpleIterator(book);
+        HSSFWorkbook book = (HSSFWorkbook) WorkbookFactory.create(system);
+        HSSFSheet sheet = book.getSheetAt(0);
+        HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
+//        List<HSSFPictureData> hssfPictureDataList = book.getAllPictures(); //无法定位Picture、
+        Map<String, PictureData> pictureDataMap = new HashMap<>();
+        List<HSSFShape> shapeList = patriarch.getChildren();
+        for (HSSFShape hssfShape : shapeList) {
+            if (hssfShape instanceof HSSFPicture) {
+                HSSFPicture picture = (HSSFPicture) hssfShape;
+                HSSFClientAnchor anchor = picture.getClientAnchor();
+                short col1 = anchor.getCol1();
+                short col2 = anchor.getCol2();
+                int row1 = anchor.getRow1();
+                int row2 = anchor.getRow2();
+                int dx2 = anchor.getDx2();
+                int dy2 = anchor.getDy2();
+                //只取图片在一个单元格内的、
+                if ((col1 == col2 && row1 == row2) || (row1 + 1 == row2 && col1 + 1 == col2 && dx2 == 0 && dy2 == 0)) {
+                    pictureDataMap.put(row1 + "-" + col1, picture.getPictureData());
+                }
+            }
+        }
+        List<Map<String, Object>> dataList = new ArrayList<>();
+        simpleIterator(book, dataList, pictureDataMap);
+        System.out.println("dataList = " + dataList);
         book.close();
         return "...";
     }
@@ -155,13 +177,13 @@ public class POIExcelController {
     /**
      * 条件格式化、ConditionalFormatting
      *
-     * @param sheet
+     * @param sheet 工作簿
      */
     public void formating(Sheet sheet) {
-        SheetConditionalFormatting sheetCF = sheet.getSheetConditionalFormatting();
+        SheetConditionalFormatting conditionalFormatting = sheet.getSheetConditionalFormatting();
 
-        ConditionalFormattingRule rule1 = sheetCF.createConditionalFormattingRule(ComparisonOperator.EQUAL, "0");
-        ConditionalFormattingRule rule2 = sheetCF.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "0", "10");
+        ConditionalFormattingRule rule1 = conditionalFormatting.createConditionalFormattingRule(ComparisonOperator.EQUAL, "0");
+        ConditionalFormattingRule rule2 = conditionalFormatting.createConditionalFormattingRule(ComparisonOperator.BETWEEN, "0", "10");
         FontFormatting fontFmt = rule1.createFontFormatting();
         fontFmt.setFontStyle(true, false);
         fontFmt.setFontColorIndex(IndexedColors.DARK_RED.index);
@@ -204,10 +226,10 @@ public class POIExcelController {
 
         HSSFRow row = sheet.createRow(0);
         HSSFRow row1 = sheet.createRow(1);
-        Cell cell_00 = CellUtil.createCell(row, 0, "CellUtil--00", style);
-        Cell cell_01 = CellUtil.createCell(row, 1, "CellUtil--01", style);
-        Cell cell_10 = CellUtil.createCell(row1, 0, "CellUtil--10", style);
-        Cell cell_11 = CellUtil.createCell(row1, 1, "CellUtil--11", style);
+        CellUtil.createCell(row, 0, "CellUtil--00", style);
+        CellUtil.createCell(row, 1, "CellUtil--01", style);
+        CellUtil.createCell(row1, 0, "CellUtil--10", style);
+        CellUtil.createCell(row1, 1, "CellUtil--11", style);
 
 
         double excelDate = HSSFDateUtil.getExcelDate(new Date());
@@ -252,7 +274,7 @@ public class POIExcelController {
     /**
      * 画简单的形状、常用来插入图片、
      *
-     * @throws Exception
+     * @throws Exception ex
      */
     @GetMapping("drawShapes")
     public void drawShapes() throws Exception {
@@ -307,7 +329,7 @@ public class POIExcelController {
     /**
      * 插入图片到Excel中、
      *
-     * @throws Exception
+     * @throws Exception ex
      */
     @GetMapping("pictures")
     public void pictures() throws Exception {
@@ -333,6 +355,66 @@ public class POIExcelController {
 
         FileOutputStream outputStream = new FileOutputStream(BASE_DIRECTORY_PATH + "HSSF测试pictures.xls");
         workbook.write(outputStream);
+
+        excelUtil.closeStream(workbook, outputStream);
+    }
+
+    /**
+     * 插入多张图片、
+     *
+     * @throws Exception ex
+     */
+    @GetMapping("addPictures")
+    public void addPictures() throws Exception {
+        FileInputStream inputStream = new FileInputStream(XLS_TEMPLATE_FILE_PATH);
+        HSSFWorkbook workbook = new HSSFWorkbook(inputStream);
+        HSSFSheet sheet = workbook.getSheetAt(0);
+        HSSFRow row5 = sheet.getRow(4);
+        row5.setHeightInPoints(sheet.getDefaultRowHeightInPoints());
+
+        BufferedImage image1 = ImageIO.read(new File(BASE_DIRECTORY_PATH + "1.jpg"));
+        BufferedImage image2 = ImageIO.read(new File(BASE_DIRECTORY_PATH + "2.jpg"));
+        BufferedImage image3 = ImageIO.read(new File(BASE_DIRECTORY_PATH + "3.jpg"));
+        BufferedImage image4 = ImageIO.read(new File(BASE_DIRECTORY_PATH + "4.jpg"));
+        ByteArrayOutputStream byteArrayOS1 = new ByteArrayOutputStream();
+        ByteArrayOutputStream byteArrayOS2 = new ByteArrayOutputStream();
+        ByteArrayOutputStream byteArrayOS3 = new ByteArrayOutputStream();
+        ByteArrayOutputStream byteArrayOS4 = new ByteArrayOutputStream();
+        ImageIO.write(image1, "JPG", byteArrayOS1);
+        ImageIO.write(image2, "JPG", byteArrayOS2);
+        ImageIO.write(image3, "JPG", byteArrayOS3);
+        ImageIO.write(image4, "JPG", byteArrayOS4);
+
+        int index1 = workbook.addPicture(byteArrayOS1.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+        int index2 = workbook.addPicture(byteArrayOS2.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+        int index3 = workbook.addPicture(byteArrayOS3.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+        int index4 = workbook.addPicture(byteArrayOS4.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+
+        log.info("index1 = {}, index2 = {}, index3 = {}, index4 = {}", index1, index2, index3, index4);
+
+        HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
+        /*
+         *   0<= dx <=1023
+         *   0<= dy <=255
+         *   锚点的起点：左上角(dx1,dy1)、
+         *   锚点的终点：右上角(dx2,dy2)、
+         * */
+        HSSFClientAnchor anchor1 = new HSSFClientAnchor(16, 48, 975, 239, (short) 5, 1, (short) 5, 1);//设置在同一个单元格内、并有间距
+        HSSFClientAnchor anchor2 = new HSSFClientAnchor(16, 48, 975, 239, (short) 5, 2, (short) 5, 2);
+        HSSFClientAnchor anchor3 = new HSSFClientAnchor(16, 48, 975, 239, (short) 5, 3, (short) 5, 3);
+        HSSFClientAnchor anchor4 = new HSSFClientAnchor(16, 48, 975, 239, (short) 5, 4, (short) 5, 4);
+        patriarch.createPicture(anchor1, index1);
+        patriarch.createPicture(anchor2, index2);
+        patriarch.createPicture(anchor3, index3);
+        patriarch.createPicture(anchor4, index4);
+
+        FileOutputStream outputStream = new FileOutputStream(XLS_TEMPLATE_FILE_PATH);
+        workbook.write(outputStream);
+
+        image1.flush();
+        image2.flush();
+        image3.flush();
+        image4.flush();
 
         excelUtil.closeStream(workbook, outputStream);
     }
@@ -506,25 +588,37 @@ public class POIExcelController {
      * 遍历Excel表格、
      * row.getCell(0, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);//指定当前单元格为null and blank cells时的策略、(暂时不知道有何用)
      *
-     * @param workbook
+     * @param workbook Excel文件
      */
-    public void simpleIterator(Workbook workbook) {
+    public void simpleIterator(Workbook workbook, List<Map<String, Object>> dataList, Map<String, PictureData> pictureDataMap) {
         DataFormatter formatter = new DataFormatter();
         for (Sheet sheet : workbook) {//sheetIterator
-            int lastRowNum = sheet.getLastRowNum();
-            log.info("lastRowNum = {}", lastRowNum);//获取最后一行的位置、
+            Row row0 = sheet.getRow(0);
             for (Row row : sheet) {//rowIterator
-                short lastCellNum = row.getLastCellNum();
-                log.info("lastCellNum = {}", lastCellNum);//获取最后一列的位置、
+                Map<String, Object> map = new HashMap<>();
                 for (Cell cell : row) {//cellIterator
-//                    cell.getStringCellValue();
-//                    cell.getNumericCellValue();
                     CellReference cellRef = new CellReference(row.getRowNum(), cell.getColumnIndex());
                     log.info("cellRef.formatAsString = {}", cellRef.formatAsString());
                     String formatValue = formatter.formatCellValue(cell);//不进行formatter、则需要对单元格内容进行判断后再获取、
                     CellAddress address = cell.getAddress();//获取当前单元格的坐标
                     log.info("row = {}, column = {}, value = {}", address.getRow(), address.getColumn(), formatValue);
+                    if (cell.getHyperlink() != null) {
+                        String linkAddr = cell.getHyperlink().getAddress();
+                        map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + ":" + linkAddr);//key是表头、
+                        continue;
+                    }
+//                    cell.getCellComment();//获取标注、注释
+                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue);//key是表头、
                 }
+//                for (String key : pictureDataMap.keySet()) {
+//                    if (key.startsWith(row.getRowNum() + "-")) {
+//                        int column = Integer.parseInt(key.split("-")[1]);
+//                        map.put(row0.getCell(column).getStringCellValue(), pictureDataMap.get(key));
+//                    }
+//                }
+                pictureDataMap.keySet().stream().filter(key -> key.startsWith(row.getRowNum() + "-"))
+                        .forEach(key -> map.put(row0.getCell(Integer.parseInt(key.split("-")[1])).getStringCellValue(), pictureDataMap.get(key)));
+                dataList.add(map);
             }
         }
     }
