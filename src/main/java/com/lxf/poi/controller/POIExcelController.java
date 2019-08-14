@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
@@ -95,8 +96,8 @@ public class POIExcelController {
         //设置打印区域
         workbook.setPrintArea(0, 0, 9, 0, 9);
 
-        Font font = getFont(workbook, 10, "Consolas", IndexedColors.RED.index);
-        Font font2 = getFont(workbook, 15, "黑体", IndexedColors.GREEN.index);
+        Font font = excelUtil.getFont(workbook, IndexedColors.RED.index, false);
+        Font font2 = excelUtil.getFont(workbook, IndexedColors.GREEN.index, false);
 
         //富文本、
         HSSFRichTextString richString = new HSSFRichTextString("Hello, World!");
@@ -170,7 +171,40 @@ public class POIExcelController {
 
     @GetMapping("mergingCells")
     public void createMergingCells() throws Exception {
-        mergingCells(new CellRangeAddress(1, 1, 0, 1), XLS_TEMPLATE_FILE_PATH);
+        FileInputStream inputStream = new FileInputStream(BASE_DIRECTORY_PATH + "HSSF测试method.xls");
+        HSSFWorkbook workbook = new HSSFWorkbook(inputStream);
+        HSSFSheet sheet = workbook.getSheetAt(0);
+
+        excelUtil.mergingCells(sheet, new CellRangeAddress(1, 1, 0, 1));
+
+        excelUtil.closeStream(workbook, inputStream);
+
+    }
+
+    /**
+     * 测试获取CellValue的不同方式：
+     * 1、excelUtil.getObjectCellValue(cell);
+     * 2、excelUtil.getStringCellValue(cell);
+     *
+     * @throws Exception
+     */
+    @GetMapping("parseExcel")
+    public void parseExcel() throws Exception {
+        FileInputStream inputStream = new FileInputStream(BASE_DIRECTORY_PATH + "HSSF测试method.xls");
+        HSSFWorkbook workbook = new HSSFWorkbook(inputStream);
+        HSSFSheet sheet = workbook.getSheetAt(0);
+        for (Row cells : sheet) {
+            for (Cell cell : cells) {
+                Object cellValueType = excelUtil.getObjectCellValue(cell);
+                System.out.println("cellValueType = " + cellValueType);
+                if (cellValueType instanceof Date)
+                    System.out.println("cellValueType After = " + new SimpleDateFormat("yyyy-mm-dd").format(cellValueType));
+                String cellValue = excelUtil.getStringCellValue(cell);
+                System.out.println("cellValue = " + cellValue);
+            }
+        }
+
+        excelUtil.closeStream(workbook, inputStream);
 
     }
 
@@ -302,7 +336,7 @@ public class POIExcelController {
         HSSFTextbox textBox = patriarch.createTextbox(anchorTextBox);
         textBox.setLineStyle(HSSFShape.LINESTYLE_SOLID);
         HSSFRichTextString richTextString = new HSSFRichTextString("This is a test");
-        richTextString.applyFont(getFont(workbook, 10, "Consolas", IndexedColors.RED.index));
+        richTextString.applyFont(excelUtil.getFont(workbook, IndexedColors.RED.index, true));
         textBox.setString(richTextString);
         textBox.setVerticalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
         textBox.setHorizontalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
@@ -461,7 +495,7 @@ public class POIExcelController {
         HSSFSheet sheet = workbook.createSheet();
         HSSFCell cell = sheet.createRow(0).createCell(0);
         HSSFCellStyle style = workbook.createCellStyle();
-        Font font = getFont(workbook, 10, "Consolas", IndexedColors.BLUE.index);
+        Font font = excelUtil.getFont(workbook, IndexedColors.BLUE.index, false);
         style.setFont(font);
         cell.setCellStyle(style);//为单元格设置样式,否则样式不生效、
         cell.setHyperlink(hyperlink);
@@ -623,37 +657,4 @@ public class POIExcelController {
         }
     }
 
-    public void mergingCells(CellRangeAddress rangeAddress, String path) throws Exception {
-        FileInputStream inputStream = new FileInputStream(path);
-        HSSFWorkbook workbook = new HSSFWorkbook(inputStream);
-        Sheet sheet = workbook.getSheetAt(0);
-        sheet.addMergedRegionUnsafe(rangeAddress);//两个单元格都有值,都会保留,但是只显示一个单元格的值、
-        FileOutputStream outputStream = new FileOutputStream(path);
-        workbook.write(outputStream);
-        excelUtil.closeStream(workbook, outputStream, inputStream);
-    }
-
-    /**
-     * 不要循环创建字体样式,尽量重用、
-     *
-     * @param workbook
-     * @param fontHeightInPoints 字号大小。 200 FontHeight <==> 10 FontHeightInPoints
-     * @param fontName           字体名称
-     * @param color              eg:IndexedColors.GREEN.index,HSSFColor.RED.index
-     * @return
-     */
-    public Font getFont(Workbook workbook, int fontHeightInPoints, String fontName, short color) {
-        Font font = workbook.createFont();
-        font.setFontHeightInPoints((short) fontHeightInPoints);//设置字号、
-        font.setFontName(fontName);
-        font.setBold(true);
-        font.setItalic(true);//斜体
-//        font.setStrikeout(true);//删除线
-        font.setUnderline(Font.U_SINGLE);
-
-        //设置字体颜色
-        font.setColor(color);
-
-        return font;
-    }
 }
