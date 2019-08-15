@@ -19,13 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.*;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -687,90 +687,99 @@ public class POIExcelController {
     public void addData() throws Exception {
         List<Map<String, Object>> mapList = new ArrayList<>();
         Map<String, Object> data = new HashMap<>();
-        data.put("序号", 6);
+        data.put("序号", 1);
         data.put("文字", "中国");
         data.put("日期", LocalDate.now());
         data.put("数字", 199.99);
-        data.put("超链接", "百度:http://www.baidu.com");
+        data.put("超链接", "百度---http://www.baidu.com");
         data.put("图片", BASE_DIRECTORY_PATH + "1.jpg");
 
         Map<String, Object> data2 = new HashMap<>();
-        data2.put("序号", 7);
+        data2.put("序号", 2);
         data2.put("文字", "中国");
         data2.put("日期", LocalDate.now());
         data2.put("数字", 199.99);
-        data2.put("超链接", "百度:http://www.baidu.com");
+        data2.put("超链接", "百度---http://www.baidu.com");
         data2.put("图片", BASE_DIRECTORY_PATH + "2.jpg");
 
         Map<String, Object> data3 = new HashMap<>();
-        data3.put("序号", 8);
+        data3.put("序号", 3);
         data3.put("文字", "中国");
-        data3.put("日期", LocalDate.now());
+        data3.put("日期", LocalDateTime.now());
         data3.put("数字", 199.99);
-        data3.put("超链接", "百度:http://www.baidu.com");
+        data3.put("超链接", "百度---http://www.baidu.com");
         data3.put("图片", BASE_DIRECTORY_PATH + "3.jpg");
 
         mapList.add(data);
         mapList.add(data2);
         mapList.add(data3);
 
-        HSSFWorkbook workbook = new HSSFWorkbook(new FileInputStream(XLS_TEMPLATE_FILE_PATH));
+        FileInputStream fileInputStream = new FileInputStream(XLS_TEMPLATE_FILE_PATH);
+        HSSFWorkbook workbook = new HSSFWorkbook(fileInputStream);
         HSSFSheet sheetAt = workbook.getSheetAt(0);
+        sheetAt.autoSizeColumn(2);
+
         HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
         CellStyle style = excelUtil.getStyle(workbook);
         HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
-        if (row0 == null)
-            return;
+        if (row0 == null) return;
         int lastRowNum = sheetAt.getLastRowNum();
+        System.out.println("lastRowNum = " + lastRowNum);
         for (Map<String, Object> map : mapList) {
-            HSSFRow row = sheetAt.createRow(lastRowNum++);
-            for (int i = 0; i < map.entrySet().size(); i++) {
-                String key = row0.getCell(i).getStringCellValue();
-                //如果不是图片路径、
+            lastRowNum++;
+            System.out.println("lastRowNum = " + lastRowNum);
+            HSSFRow row = sheetAt.createRow(lastRowNum);
+            for (int column = 0; column < map.entrySet().size(); column++) {
+                //表头、
+                String key = row0.getCell(column).getStringCellValue();
                 Object value = map.get(key);
-                if (!value.toString().startsWith(BASE_DIRECTORY_PATH)) {
-                    HSSFCell cell = row.createCell(i);
+                //图片路径、
+                if (value.toString().startsWith(BASE_DIRECTORY_PATH)) {
+                    String absFilePath = value.toString();
+                    createPicture(workbook, patriarch, row, (short) column, absFilePath);
+                } else if (value.toString().contains("---")) {//超链接
+                    String[] split = value.toString().split("---");//超链接需要指定固定的格式、
+                    HSSFCell cell = row.createCell(column);
                     cell.setCellStyle(style);
-                    setCellValue(cell, value);
-                    continue;
-                }
-                String filePath = value.toString();
-                BufferedImage bufferedImage = ImageIO.read(new FileInputStream(filePath));
-                ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
-                MimeTypeUtils.parseMimeType()
-                ImageIO.write(bufferedImage,)
-                String[] split = filePath.split(".");
-                workbook.addPicture(byteArrayOS.toByteArray(),Workbook.PICTURE_TYPE_JPEG);
+                    HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
+                    hyperlink.setAddress(split[1]);
+                    //没生效、如果不进行cell.setCellValue(split[0]);则显示空白
+                    hyperlink.setShortFilename(split[0]);
+                    cell.setHyperlink(hyperlink);
+                    cell.setCellValue(split[0]);
 
+                } else {
+                    HSSFCell cell = row.createCell(column);
+                    cell.setCellStyle(style);
+                    excelUtil.setCellValue(cell, value);
+                }
             }
         }
+
+        workbook.write(new File(XLS_TEMPLATE_FILE_PATH));
+        excelUtil.closeStream(workbook, fileInputStream);
     }
 
-    public void setCellValue(Cell cell, Object value) {
-        if (value instanceof String) {
-            cell.setCellValue(value.toString());
-            return;
+    private void createPicture(HSSFWorkbook workbook, HSSFPatriarch patriarch, HSSFRow row, short i, String absFilePath) throws IOException {
+        ByteArrayOutputStream byteArrayOS = excelUtil.readImage(absFilePath);
+        //获取MimeType、
+        String contentType = Files.probeContentType(Paths.get(absFilePath));
+
+        int index;
+        switch (contentType) {
+            case MimeTypeUtils.IMAGE_JPEG_VALUE:
+                index = workbook.addPicture(byteArrayOS.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+                break;
+            case MimeTypeUtils.IMAGE_PNG_VALUE:
+                index = workbook.addPicture(byteArrayOS.toByteArray(), Workbook.PICTURE_TYPE_PNG);
+                break;
+            default:
+                index = -1;
         }
-        if (value instanceof Date) {
-            cell.setCellValue((Date) value);
-            return;
+        if (index != -1) {
+            //图片所占单元格大小、按需设置、
+            HSSFClientAnchor anchor = excelUtil.getAnchor(16, 48, 975, 239, i, row.getRowNum(), i, row.getRowNum());
+            patriarch.createPicture(anchor, index);
         }
-        if (value instanceof Calendar) {
-            cell.setCellValue((Calendar) value);
-            return;
-        }
-        if (value instanceof Boolean) {
-            cell.setCellValue((Boolean) value);
-            return;
-        }
-        if (value instanceof Double) {
-            cell.setCellValue((Double) value);
-            return;
-        }
-        if (value instanceof RichTextString) {
-            cell.setCellValue((RichTextString) value);
-            return;
-        }
-        cell.setCellValue(value.toString());
     }
 }

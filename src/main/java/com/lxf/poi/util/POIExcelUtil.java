@@ -1,6 +1,7 @@
 package com.lxf.poi.util;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
@@ -9,11 +10,14 @@ import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -124,8 +128,9 @@ public class POIExcelUtil {
     }
 
     /**
-     *  设置Cell的值、
-     * @param cell cell
+     * 设置Cell的值、
+     *
+     * @param cell  cell
      * @param value value
      */
     public void setCellValue(Cell cell, Object value) {
@@ -287,6 +292,87 @@ public class POIExcelUtil {
     }
 
     /**
+     * 在第一个不为空(有数据)的sheet工作簿的最后插入数据、
+     *
+     * @param absFilePath       Excel文件路径
+     * @param picturePrefixPath 图片存储路径的前缀、(类似根路径)
+     * @param mapList           注意：如果存在超链接、使用"---" 拼接, 即value = cellValue---address 的格式存在Map中、
+     * @param splitLink         超链接的拼接字符串、默认"---"
+     * @throws IOException
+     */
+    //TODO:无法实现数据插入,不显示数据、
+    public void addNonEmptyRow(String absFilePath, String picturePrefixPath, List<Map<String, Object>> mapList, @Nullable String splitLink) throws IOException {
+        if (StringUtils.isEmpty(splitLink)) splitLink = "---";
+
+        FileInputStream fileInputStream = new FileInputStream(absFilePath);
+        HSSFWorkbook workbook = new HSSFWorkbook(fileInputStream);
+        for (Sheet rows : workbook) {
+            if (!(rows instanceof HSSFSheet)) continue;
+            HSSFSheet sheetAt = (HSSFSheet) rows;
+            HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
+            CellStyle style = getStyle(workbook);
+            HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
+            if (row0 == null) continue;//此sheet工作簿为空(没有数据)、
+            int lastRowNum = sheetAt.getLastRowNum();
+            for (Map<String, Object> map : mapList) {
+                lastRowNum++;
+                HSSFRow row = sheetAt.createRow(lastRowNum);
+                for (int column = 0; column < map.entrySet().size(); column++) {
+                    //表头、
+                    String key = row0.getCell(column).getStringCellValue();
+                    Object value = map.get(key);
+
+                    if (value.toString().startsWith(picturePrefixPath)) {//图片路径、
+                        String absPicturePath = value.toString();
+                        createPicture(workbook, patriarch, row, (short) column, absPicturePath);
+                    } else if (value.toString().contains(splitLink)) {//超链接
+                        String[] strings = value.toString().split(splitLink);//超链接需要指定固定的格式、
+                        HSSFCell cell = row.createCell(column);
+                        cell.setCellStyle(style);
+                        HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
+                        hyperlink.setAddress(strings[1]);
+                        //没生效、如果不进行cell.setCellValue(strings[0]);则显示空白
+                        hyperlink.setShortFilename(strings[0]);
+                        cell.setHyperlink(hyperlink);
+                        cell.setCellValue(strings[0]);//显示超链接的名称、
+                    } else {
+                        HSSFCell cell = row.createCell(column);
+                        cell.setCellStyle(style);
+                        setCellValue(cell, value);
+                    }
+                }
+            }
+            //TODO: 不能为每张表都添加同样的数据、需要根据条件跳出、
+            return;
+        }
+        workbook.write(new File(absFilePath));
+        closeStream(workbook, fileInputStream);
+    }
+
+    private void createPicture(HSSFWorkbook workbook, HSSFPatriarch patriarch, HSSFRow row, short i, String absFilePath) throws IOException {
+        ByteArrayOutputStream byteArrayOS = readImage(absFilePath);
+        //获取MimeType、
+        String contentType = Files.probeContentType(Paths.get(absFilePath));
+
+        int index;
+        switch (contentType) {
+            case MimeTypeUtils.IMAGE_JPEG_VALUE:
+                index = workbook.addPicture(byteArrayOS.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
+                break;
+            case MimeTypeUtils.IMAGE_PNG_VALUE:
+                index = workbook.addPicture(byteArrayOS.toByteArray(), Workbook.PICTURE_TYPE_PNG);
+                break;
+            default:
+                index = -1;
+        }
+        if (index != -1) {
+            //图片所占单元格大小、按需设置、
+            HSSFClientAnchor anchor = getAnchor(16, 48, 975, 239, i, row.getRowNum(), i, row.getRowNum());
+            patriarch.createPicture(anchor, index);
+        }
+    }
+
+    /**
      * 解析sheet的内容,不包含图片、(没有处理表格标题所占的Row)
      * 超链接使用 value = name:url 的格式存在Map中、
      *
@@ -328,7 +414,7 @@ public class POIExcelUtil {
 
     /**
      * 解析sheet的内容,包含图片、(没有处理表格标题所占的Row)
-     * 超链接使用 value = name:url 的格式存在Map中、
+     * 超链接使用 "---" 拼接, 即 value = cellValue---address 的格式存在Map中、
      *
      * @param sheet     xls格式工作簿
      * @param evaluator 公式计算器、可以为null、
@@ -356,7 +442,8 @@ public class POIExcelUtil {
                 CellAddress address = cell.getAddress();
                 if (cell.getHyperlink() != null) {
                     String linkAddr = cell.getHyperlink().getAddress();
-                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + ":" + linkAddr);//key是表头、
+                    //超链接使用 "---" 拼接 cellValue和address
+                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + "---" + linkAddr);//key是表头、
                     continue;
                 }
                 //cell.getCellComment();//获取标注、注释
@@ -409,6 +496,11 @@ public class POIExcelUtil {
         return pictureDataMap;
     }
 
+    //判断单元格是不是合并的、
+    public void isMergingRegion() {
+
+    }
+
     /**
      * 异步保存Excel中读取数据的图片、
      * 如果需要获取存储路径,返回值改为Future<String>对象即可、
@@ -435,6 +527,62 @@ public class POIExcelUtil {
         } finally {
             closeStream(inputStream, fileOutputStream, bufferedOutputStream);
         }
+    }
+
+    /**
+     * 读取Image,转换为ByteArrayOutputStream、  -->关闭IO流、无法获得展示图片
+     *
+     * @param filePath 图片绝对路径
+     * @return ByteArrayOutputStream
+     */
+    public ByteArrayOutputStream readImage(String filePath) throws IOException {
+        FileInputStream inputStream = null;
+        try {
+            inputStream = new FileInputStream(filePath);
+            BufferedImage bufferedImage = ImageIO.read(inputStream);
+            ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
+            int index = filePath.lastIndexOf(".");
+            ImageIO.write(bufferedImage, filePath.substring(index + 1), byteArrayOS);
+            bufferedImage.flush();
+            return byteArrayOS;
+        } finally {
+            //byteArrayOS在ImageIo.write()内部已关闭、
+            if (inputStream != null) inputStream.close();
+        }
+    }
+
+    /**
+     * 获取画板锚点、HSSFClientAnchor,默认填满单元格、
+     * col1 = col2 && row1 =row2 表示占据一个的单元格、
+     *
+     * @param col1
+     * @param row1
+     * @param col2
+     * @param row2
+     * @return HSSFClientAnchor
+     */
+    public HSSFClientAnchor getAnchor(int col1, int row1, int col2, int row2) {
+        return new HSSFClientAnchor(0, 0, 1023, 255, (short) col1, row1, (short) col2, row2);
+    }
+
+    /**
+     * 获取画板锚点,图片和单元格 有一定的间距、
+     * 16, 48, 975, 239
+     * dx范围: 0~1023
+     * dy范围: 0~255
+     *
+     * @param dx1
+     * @param dy1
+     * @param dx2
+     * @param dy2
+     * @param col1
+     * @param row1
+     * @param col2
+     * @param row2
+     * @return
+     */
+    public HSSFClientAnchor getAnchor(int dx1, int dy1, int dx2, int dy2, int col1, int row1, int col2, int row2) {
+        return new HSSFClientAnchor(dx1, dy1, dx2, dy2, (short) col1, row1, (short) col2, row2);
     }
 
     /**
