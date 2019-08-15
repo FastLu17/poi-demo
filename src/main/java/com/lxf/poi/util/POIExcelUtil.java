@@ -1,17 +1,19 @@
 package com.lxf.poi.util;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.hssf.usermodel.HSSFDateUtil;
-import org.apache.poi.hssf.util.CellReference;
+import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.text.DecimalFormat;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -24,50 +26,68 @@ import java.util.*;
 @Component
 @Slf4j
 public class POIExcelUtil {
+    private final DataFormatter formatter = new HSSFDataFormatter();
     private final String BASE_URL = "C:\\Users\\Administrator\\Desktop\\POI\\";
 
     /**
-     * 读入excel的内容转换成字符串、
+     * 读入excel的内容转换成字符串,存在公式时,获取对应公式、
      * Date：格式化为:"yyyy-MM-dd hh:mm:ss"
-     * Numeric：格式化为:"#.##" -->两位小数、
      *
      * @param cell 单元格
      * @return StringValue
      */
     public String getStringCellValue(Cell cell) {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
-        DecimalFormat decimalFormat = new DecimalFormat("#.##");//两位小数
-        String cellValue = "";
-        if (cell == null)
-            return cellValue;
+        return getStringCellValue(cell, null);
+    }
 
+    /**
+     * 读入excel的内容转换成字符串、存在公式时,获取计算后再获取值、
+     * Date：格式化为:"yyyy-MM-dd hh:mm:ss"
+     *
+     * @param cell      单元格
+     * @param evaluator 公式计算器
+     * @return StringValue
+     */
+    public String getStringCellValue(Cell cell, @Nullable FormulaEvaluator evaluator) {
+        /*
+         * 类似此操作、只是定义了对日期类型的不同格式化、
+         * DataFormatter formatter = new HSSFDataFormatter();
+         * formatter.formatCellValue(cell);
+         * */
+        //hh是12小时制的时间、
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        if (cell == null)
+            return "";
         //TODO:3.5版本没有不过期的方法、getCellType()也是过期的方法、
-        switch (cell.getCellTypeEnum()) {
+        CellType cellTypeEnum = cell.getCellTypeEnum();
+        if (cellTypeEnum == CellType.FORMULA) {
+            if (evaluator == null) {
+                return cell.getCellFormula().trim();
+            }
+            cellTypeEnum = evaluator.evaluate(cell).getCellTypeEnum();//计算公式后的结果类型、
+        }
+        switch (cellTypeEnum) {
             case STRING:
-                cellValue = cell.getStringCellValue();
-                break;
+                return cell.getStringCellValue().trim();
             case BLANK:
-                cellValue = "";
-                break;
+                return "";
             case ERROR:
-                cellValue = "";
-                break;
-            case FORMULA:
-                cellValue = cell.getCellFormula();
-                break;
+                return FormulaError.forInt(cell.getErrorCellValue()).getString();
             case BOOLEAN:
-                cellValue = String.valueOf(cell.getBooleanCellValue());
-                break;
+                return cell.getBooleanCellValue() ? "TRUE" : "FALSE";
             case NUMERIC:
                 if (HSSFDateUtil.isCellDateFormatted(cell)) {
                     Date date = cell.getDateCellValue();
-                    cellValue = dateFormat.format(date);
-                } else {
-                    cellValue = decimalFormat.format((cell.getNumericCellValue()));
+                    if (dateFormat.format(date).startsWith("1899-12-31"))
+                        return dateFormat.format(date).split(" ")[1];
+                    else
+                        return dateFormat.format(date);
                 }
-                break;
+                //此处可根据需要,构造DecimalFormat对象、
+                return formatter.formatCellValue(cell, evaluator);
+            default:
+                return "";
         }
-        return cellValue;
     }
 
     /**
@@ -83,13 +103,13 @@ public class POIExcelUtil {
 
         switch (cell.getCellTypeEnum()) {
             case STRING:
-                return cell.getStringCellValue();
+                return cell.getStringCellValue().trim();
             case BLANK:
                 return null;
             case ERROR:
                 return cell.getErrorCellValue();
             case FORMULA:
-                return cell.getStringCellValue();
+                return cell.getStringCellValue().trim();
             case BOOLEAN:
                 return cell.getBooleanCellValue();
             case NUMERIC:
@@ -103,6 +123,39 @@ public class POIExcelUtil {
         }
     }
 
+    /**
+     *  设置Cell的值、
+     * @param cell cell
+     * @param value value
+     */
+    public void setCellValue(Cell cell, Object value) {
+        if (value instanceof String) {
+            cell.setCellValue(value.toString());
+            return;
+        }
+        if (value instanceof Date) {
+            //需要格式化、
+            cell.setCellValue((Date) value);
+            return;
+        }
+        if (value instanceof Calendar) {
+            cell.setCellValue((Calendar) value);
+            return;
+        }
+        if (value instanceof Boolean) {
+            cell.setCellValue((Boolean) value);
+            return;
+        }
+        if (value instanceof Double) {
+            cell.setCellValue((Double) value);
+            return;
+        }
+        if (value instanceof RichTextString) {
+            cell.setCellValue((RichTextString) value);
+            return;
+        }
+        cell.setCellValue(value.toString());
+    }
 
     /**
      * 中等(MEDIUM)的边框、
@@ -234,34 +287,168 @@ public class POIExcelUtil {
     }
 
     /**
-     * 简单的遍历Excel表格中指定的sheet、适用于没有图片的表格、
+     * 解析sheet的内容,不包含图片、(没有处理表格标题所占的Row)
+     * 超链接使用 value = name:url 的格式存在Map中、
      *
-     * @param sheet 工作簿
+     * @param sheet     工作簿、xls,xlsx均可解析、
+     * @param evaluator 公式计算器. 遇到单元格是FORMULA类型,传入此值,获得计算后的值,如果为null、则表示获取公式的表达式、
+     * @return mapList Excel表格的每行数据,不包含表头
      */
-    public List<Map<String, Object>> simpleIterator(Sheet sheet) {
+    public List<Map<String, Object>> parseSimpleExcel(Sheet sheet, @Nullable FormulaEvaluator evaluator) {
         List<Map<String, Object>> dataList = new ArrayList<>();
-        DataFormatter formatter = new DataFormatter();
-        Row row0 = sheet.getRow(0);
-        for (Row row : sheet) {//rowIterator
-            if (row.getRowNum() == 0)
+        int firstRowNum = sheet.getFirstRowNum();
+        Row row0 = sheet.getRow(firstRowNum);
+        if (row0 == null)//空白表格：row0 == null
+            return dataList;
+        for (Row row : sheet) {
+            //不获取表头的数据、(没处理表格标题所占Row,默认第一行是表头)
+            if (row.getRowNum() == firstRowNum)
+                continue;
+            //判断是否是空行、
+            if (isRowEmpty(row))
                 continue;
             Map<String, Object> map = new HashMap<>();
-            for (Cell cell : row) {//cellIterator
-                CellReference cellRef = new CellReference(row.getRowNum(), cell.getColumnIndex());
-                log.info("cellRef.formatAsString = {}", cellRef.formatAsString());
-                String formatValue = formatter.formatCellValue(cell);//不进行formatter、则需要对单元格内容进行判断后再获取、
-                CellAddress address = cell.getAddress();//获取当前单元格的坐标
+            for (Cell cell : row) {
+                //获取单元格格式化后的值
+                String formatValue = getStringCellValue(cell, evaluator);
+                //获取当前单元格的坐标
+                CellAddress address = cell.getAddress();
                 if (cell.getHyperlink() != null) {
                     String linkAddr = cell.getHyperlink().getAddress();
                     map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + ":" + linkAddr);//key是表头、
                     continue;
                 }
-//                    cell.getCellComment();//获取标注、注释
+                //cell.getCellComment();//获取标注、注释
                 map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue);//key是表头、
             }
             dataList.add(map);
         }
         return dataList;
+    }
+
+    /**
+     * 解析sheet的内容,包含图片、(没有处理表格标题所占的Row)
+     * 超链接使用 value = name:url 的格式存在Map中、
+     *
+     * @param sheet     xls格式工作簿
+     * @param evaluator 公式计算器、可以为null、
+     * @return mapList Excel表格的每行数据,不包含表头行
+     */
+    public List<Map<String, Object>> parseComplexXls(HSSFSheet sheet, @Nullable FormulaEvaluator evaluator) {
+        List<Map<String, Object>> dataList = new ArrayList<>();
+        Map<CellAddress, PictureData> pictureDataMap = getHSSFPictureData(sheet);
+        int firstRowNum = sheet.getFirstRowNum();
+        Row row0 = sheet.getRow(firstRowNum);
+        if (row0 == null)//空白表格：row0 == null
+            return dataList;
+        for (Row row : sheet) {
+            //不获取表头的数据、(没处理表格标题所占Row,默认第一行是表头)
+            if (row.getRowNum() == firstRowNum)
+                continue;
+            //判断是否是空行、
+            if (isRowEmpty(row))
+                continue;
+            Map<String, Object> map = new HashMap<>();
+            for (Cell cell : row) {
+                //获取单元格格式化后的值
+                String formatValue = getStringCellValue(cell, evaluator);
+                //获取当前单元格的坐标
+                CellAddress address = cell.getAddress();
+                if (cell.getHyperlink() != null) {
+                    String linkAddr = cell.getHyperlink().getAddress();
+                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + ":" + linkAddr);//key是表头、
+                    continue;
+                }
+                //cell.getCellComment();//获取标注、注释
+                //cell.getCellFormula();//获取单元格的公式
+                map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue);//key是表头、
+            }
+            if (pictureDataMap != null && !pictureDataMap.isEmpty()) {
+                pictureDataMap.keySet().stream().filter(address -> address.getRow() == row.getRowNum())
+                        .forEach(address -> map.put(row0.getCell(address.getColumn()).getStringCellValue(), pictureDataMap.get(address)));
+            }
+            dataList.add(map);
+        }
+        return dataList;
+    }
+
+    /**
+     * 获取当前sheet中的每个Cell内的图片数据、(图片所占范围超过一个Cell、则不获取)
+     *
+     * @param sheet xls格式的Excel工作簿、
+     * @return 当前sheet中的图片数据、
+     */
+    private Map<CellAddress, PictureData> getHSSFPictureData(HSSFSheet sheet) {
+//        List<HSSFPictureData> hssfPictureDataList = book.getAllPictures(); //无法定位Picture、
+        HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
+        Map<CellAddress, PictureData> pictureDataMap = new HashMap<>();
+        List<HSSFShape> shapeList = patriarch.getChildren();
+        for (HSSFShape hssfShape : shapeList) {
+            if (hssfShape instanceof HSSFPicture) {
+                HSSFPicture picture = (HSSFPicture) hssfShape;
+                HSSFClientAnchor anchor = picture.getClientAnchor();
+                short col1 = anchor.getCol1();
+                short col2 = anchor.getCol2();
+                int row1 = anchor.getRow1();
+                int row2 = anchor.getRow2();
+                int dx2 = anchor.getDx2();
+                int dy2 = anchor.getDy2();
+                /*
+                 *   0<= dx <=1023
+                 *   0<= dy <=255
+                 *   锚点的起点：左上角(dx1,dy1)、
+                 *   锚点的终点：右上角(dx2,dy2)、
+                 * */
+                //只取图片在一个单元格内的、
+                if ((col1 == col2 && row1 == row2) || (row1 + 1 == row2 && col1 + 1 == col2 && dx2 == 0 && dy2 == 0)) {
+                    CellAddress cellAddress = new CellAddress(row1, col1);
+                    pictureDataMap.put(cellAddress, picture.getPictureData());
+                }
+            }
+        }
+        return pictureDataMap;
+    }
+
+    /**
+     * 异步保存Excel中读取数据的图片、
+     * 如果需要获取存储路径,返回值改为Future<String>对象即可、
+     *
+     * @param absPath
+     * @param data
+     */
+    @Async
+    public void writeImage(@NonNull String absPath, @NonNull PictureData data) {
+        if (StringUtils.isEmpty(absPath) || data == null)
+            throw new RuntimeException("absPath 和 data 不能为null.");
+        BufferedImage bufferedImage;
+        ByteArrayInputStream inputStream = null;
+        FileOutputStream fileOutputStream = null;
+        BufferedOutputStream bufferedOutputStream = null;
+        try {
+            inputStream = new ByteArrayInputStream(data.getData());
+            bufferedImage = ImageIO.read(inputStream);
+            fileOutputStream = new FileOutputStream(absPath + UUID.randomUUID().toString() + "." + data.getMimeType().split("/")[1]);
+            bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+            ImageIO.write(bufferedImage, data.getMimeType().split("/")[1], bufferedOutputStream);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            closeStream(inputStream, fileOutputStream, bufferedOutputStream);
+        }
+    }
+
+    /**
+     * 判断此行是否为空行,有空格
+     *
+     * @param row
+     * @return true OR false
+     */
+    private boolean isRowEmpty(Row row) {
+        for (Cell cell : row) {
+            if (cell != null && cell.getCellTypeEnum() != CellType.BLANK && !StringUtils.isEmpty(getStringCellValue(cell)))
+                return false;
+        }
+        return true;
     }
 
     public void closeStream(Workbook workbook, FileOutputStream outputStream) throws IOException {
@@ -286,5 +473,41 @@ public class POIExcelUtil {
             workbook.close();
         if (inputStream != null)
             inputStream.close();
+    }
+
+    public void closeStream(InputStream inputStream, OutputStream... outputStream) {
+        if (outputStream != null)
+            Arrays.asList(outputStream).forEach(ops -> {
+                try {
+                    ops.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        if (inputStream != null) {
+            try {
+                inputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void closeStream(OutputStream outputStream, InputStream... inputStream) {
+        if (inputStream != null)
+            Arrays.asList(inputStream).forEach(ips -> {
+                try {
+                    ips.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        if (outputStream != null) {
+            try {
+                outputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }

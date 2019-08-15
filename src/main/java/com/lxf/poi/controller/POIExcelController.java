@@ -13,6 +13,7 @@ import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellUtil;
 import org.apache.poi.ss.util.RegionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,6 +25,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -130,6 +132,15 @@ public class POIExcelController {
         POIFSFileSystem system = new POIFSFileSystem(new File(XLS_TEMPLATE_FILE_PATH));
         HSSFWorkbook book = (HSSFWorkbook) WorkbookFactory.create(system);
         HSSFSheet sheet = book.getSheetAt(0);
+        Map<String, PictureData> pictureDataMap = getPictureDataMap(sheet);
+        List<Map<String, Object>> dataList = new ArrayList<>();
+        simpleIterator(book, dataList, pictureDataMap);
+        System.out.println("dataList = " + dataList);
+        book.close();
+        return "...";
+    }
+
+    private Map<String, PictureData> getPictureDataMap(HSSFSheet sheet) {
         HSSFPatriarch patriarch = sheet.createDrawingPatriarch();
 //        List<HSSFPictureData> hssfPictureDataList = book.getAllPictures(); //无法定位Picture、
         Map<String, PictureData> pictureDataMap = new HashMap<>();
@@ -150,11 +161,7 @@ public class POIExcelController {
                 }
             }
         }
-        List<Map<String, Object>> dataList = new ArrayList<>();
-        simpleIterator(book, dataList, pictureDataMap);
-        System.out.println("dataList = " + dataList);
-        book.close();
-        return "...";
+        return pictureDataMap;
     }
 
     @GetMapping("getXlsText")
@@ -193,13 +200,14 @@ public class POIExcelController {
         FileInputStream inputStream = new FileInputStream(BASE_DIRECTORY_PATH + "HSSF测试method.xls");
         HSSFWorkbook workbook = new HSSFWorkbook(inputStream);
         HSSFSheet sheet = workbook.getSheetAt(0);
+        FormulaEvaluator evaluator = new HSSFFormulaEvaluator(workbook);
         for (Row cells : sheet) {
             for (Cell cell : cells) {
                 Object cellValueType = excelUtil.getObjectCellValue(cell);
                 System.out.println("cellValueType = " + cellValueType);
                 if (cellValueType instanceof Date)
                     System.out.println("cellValueType After = " + new SimpleDateFormat("yyyy-mm-dd").format(cellValueType));
-                String cellValue = excelUtil.getStringCellValue(cell);
+                String cellValue = excelUtil.getStringCellValue(cell, evaluator);
                 System.out.println("cellValue = " + cellValue);
             }
         }
@@ -657,4 +665,112 @@ public class POIExcelController {
         }
     }
 
+    @GetMapping("parseComplexXls")
+    public void parseComplexXls() throws Exception {
+        HSSFWorkbook workbook = new HSSFWorkbook(new FileInputStream(XLS_TEMPLATE_FILE_PATH));
+        HSSFSheet sheetAt = workbook.getSheetAt(0);
+//        List<Map<String, Object>> mapList = excelUtil.parseSimpleExcel(sheetAt,null);
+        List<Map<String, Object>> mapList = excelUtil.parseComplexXls(sheetAt, workbook.getCreationHelper().createFormulaEvaluator());
+
+        for (Map<String, Object> map : mapList) {
+            //这个Key是图片列的表头,如果图片不是一列、则对Map进行遍历.
+            Object pictureData = map.get("图片");
+            if (pictureData instanceof PictureData) {
+                excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
+            }
+        }
+        System.out.println("mapList = " + mapList);
+        workbook.close();
+    }
+
+    @GetMapping("addData")
+    public void addData() throws Exception {
+        List<Map<String, Object>> mapList = new ArrayList<>();
+        Map<String, Object> data = new HashMap<>();
+        data.put("序号", 6);
+        data.put("文字", "中国");
+        data.put("日期", LocalDate.now());
+        data.put("数字", 199.99);
+        data.put("超链接", "百度:http://www.baidu.com");
+        data.put("图片", BASE_DIRECTORY_PATH + "1.jpg");
+
+        Map<String, Object> data2 = new HashMap<>();
+        data2.put("序号", 7);
+        data2.put("文字", "中国");
+        data2.put("日期", LocalDate.now());
+        data2.put("数字", 199.99);
+        data2.put("超链接", "百度:http://www.baidu.com");
+        data2.put("图片", BASE_DIRECTORY_PATH + "2.jpg");
+
+        Map<String, Object> data3 = new HashMap<>();
+        data3.put("序号", 8);
+        data3.put("文字", "中国");
+        data3.put("日期", LocalDate.now());
+        data3.put("数字", 199.99);
+        data3.put("超链接", "百度:http://www.baidu.com");
+        data3.put("图片", BASE_DIRECTORY_PATH + "3.jpg");
+
+        mapList.add(data);
+        mapList.add(data2);
+        mapList.add(data3);
+
+        HSSFWorkbook workbook = new HSSFWorkbook(new FileInputStream(XLS_TEMPLATE_FILE_PATH));
+        HSSFSheet sheetAt = workbook.getSheetAt(0);
+        HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
+        CellStyle style = excelUtil.getStyle(workbook);
+        HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
+        if (row0 == null)
+            return;
+        int lastRowNum = sheetAt.getLastRowNum();
+        for (Map<String, Object> map : mapList) {
+            HSSFRow row = sheetAt.createRow(lastRowNum++);
+            for (int i = 0; i < map.entrySet().size(); i++) {
+                String key = row0.getCell(i).getStringCellValue();
+                //如果不是图片路径、
+                Object value = map.get(key);
+                if (!value.toString().startsWith(BASE_DIRECTORY_PATH)) {
+                    HSSFCell cell = row.createCell(i);
+                    cell.setCellStyle(style);
+                    setCellValue(cell, value);
+                    continue;
+                }
+                String filePath = value.toString();
+                BufferedImage bufferedImage = ImageIO.read(new FileInputStream(filePath));
+                ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
+                MimeTypeUtils.parseMimeType()
+                ImageIO.write(bufferedImage,)
+                String[] split = filePath.split(".");
+                workbook.addPicture(byteArrayOS.toByteArray(),Workbook.PICTURE_TYPE_JPEG);
+
+            }
+        }
+    }
+
+    public void setCellValue(Cell cell, Object value) {
+        if (value instanceof String) {
+            cell.setCellValue(value.toString());
+            return;
+        }
+        if (value instanceof Date) {
+            cell.setCellValue((Date) value);
+            return;
+        }
+        if (value instanceof Calendar) {
+            cell.setCellValue((Calendar) value);
+            return;
+        }
+        if (value instanceof Boolean) {
+            cell.setCellValue((Boolean) value);
+            return;
+        }
+        if (value instanceof Double) {
+            cell.setCellValue((Double) value);
+            return;
+        }
+        if (value instanceof RichTextString) {
+            cell.setCellValue((RichTextString) value);
+            return;
+        }
+        cell.setCellValue(value.toString());
+    }
 }
