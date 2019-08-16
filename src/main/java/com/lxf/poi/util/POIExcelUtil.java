@@ -130,21 +130,33 @@ public class POIExcelUtil {
 
     /**
      * 设置Cell的值、
+     * Date类型："yyyy-mm-dd HH:mm:ss"、
+     * 没有处理Calendar类型的数据、
+     * LocalDate类型:Excel不支持、会被转为String、
      *
      * @param cell  cell
      * @param value value
      */
     public void setCellValue(Cell cell, Object value) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-mm-dd HH:mm:ss");
         if (value instanceof String) {
             cell.setCellValue(value.toString());
             return;
         }
         if (value instanceof Date) {
             //需要格式化、
+            String format;
+            if (dateFormat.format(value).startsWith("1899-12-31"))
+                format = "h:mm:ss";
+            else
+                format = "yyyy-mm-dd h:mm:ss";
+            CellStyle style = getStyle(cell.getRow().getSheet().getWorkbook(), format);
+            cell.setCellStyle(style);
             cell.setCellValue((Date) value);
             return;
         }
         if (value instanceof Calendar) {
+            //需要处理Calendar类型的格式化、
             cell.setCellValue((Calendar) value);
             return;
         }
@@ -173,9 +185,11 @@ public class POIExcelUtil {
      * @param borderColor 边框颜色, 默认：IndexedColors.BLACK.index
      * @param wrapText    是否换行, 默认：false
      * @param lock        是否锁定, 默认：false
+     * @param format      DataFormat对象的format格式、
      * @return CellStyle
      */
-    public CellStyle getStyle(Workbook workbook, Font font, HorizontalAlignment alignment, BorderStyle borderStyle, short borderColor, boolean wrapText, boolean lock) {
+    public CellStyle getStyle(Workbook workbook, Font font, HorizontalAlignment alignment,
+                              BorderStyle borderStyle, short borderColor, boolean wrapText, boolean lock, @Nullable String format) {
         CellStyle style = workbook.createCellStyle();
 
         style.setAlignment(alignment);
@@ -203,6 +217,9 @@ public class POIExcelUtil {
         //设置锁定、
         style.setLocked(lock);
 
+        if (format!=null)
+            style.setDataFormat(workbook.createDataFormat().getFormat(format));
+
         return style;
     }
 
@@ -214,7 +231,19 @@ public class POIExcelUtil {
      */
     public CellStyle getStyle(Workbook workbook) {
         return getStyle(workbook, getFont(workbook), HorizontalAlignment.CENTER, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false);
+                IndexedColors.BLACK.index, false, false,null);
+    }
+
+    /**
+     * 获取自定义的默认样式：水平居中,黑色-细的(THIN)边框,不换行,不锁定,自定义默认字体(Consolas)、
+     *
+     * @param workbook workbook
+     * @param format   DataFormat对象的format格式、
+     * @return CellStyle
+     */
+    public CellStyle getStyle(Workbook workbook, String format) {
+        return getStyle(workbook, getFont(workbook), HorizontalAlignment.CENTER, BorderStyle.THIN,
+                IndexedColors.BLACK.index, false, false,format);
     }
 
     /**
@@ -226,10 +255,10 @@ public class POIExcelUtil {
      * @param alignment 水平位置
      * @return CellStyle
      */
-    public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment) {
+    public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment,String format) {
         if (alignment == null) alignment = HorizontalAlignment.CENTER;
         return getStyle(workbook, font, alignment, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false);
+                IndexedColors.BLACK.index, false, false,format);
     }
 
     /**
@@ -338,9 +367,9 @@ public class POIExcelUtil {
             return null;
         for (CellRangeAddress address : rangeAddressList) {
             int firstRow = address.getFirstRow();
-            int lastRow = address.getLastRow();
+            //int lastRow = address.getLastRow();
             int firstColumn = address.getFirstColumn();
-            int lastColumn = address.getLastColumn();
+            //int lastColumn = address.getLastColumn();
             if (firstRow == 0 && firstColumn == 0) {//此时这个合并的单元格是表格的标题、(正常情况下)
                 return address;
             }
@@ -368,10 +397,10 @@ public class POIExcelUtil {
         //sheetAt.setDefaultRowHeightInPoints(36);//对当前新增的行、没有效果.
         if (defaultColumnWidth != null) sheetAt.setDefaultColumnWidth(defaultColumnWidth);//设置列宽、
 
-        CellStyle headerStyle = getStyle(workbook, getFont(workbook, 16, true), HorizontalAlignment.CENTER);
+        CellStyle headerStyle = getStyle(workbook, getFont(workbook, 16, true), HorizontalAlignment.CENTER,null);
         CellStyle bodyStyle = getStyle(workbook);
         Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
-        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
 
         HSSFRow row0 = sheetAt.createRow(0);
         if (rowHeightInPoints != null) row0.setHeightInPoints(rowHeightInPoints + 6);//设置表头行高、
@@ -401,7 +430,7 @@ public class POIExcelUtil {
         HSSFWorkbook workbook = sheetAt.getWorkbook();
         CellStyle bodyStyle = getStyle(workbook);
         Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
-        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
         createRowsWithData(picturePrefixPath, mapList, splitLink, sheetAt, bodyStyle, linkStyle, rowHeightInPoints);
     }
 
@@ -488,7 +517,6 @@ public class POIExcelUtil {
 
         FileInputStream fileInputStream = new FileInputStream(absFilePath);
         HSSFWorkbook workbook = new HSSFWorkbook(fileInputStream);
-        Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
         boolean flag = true;
         boolean hasNext = workbook.iterator().hasNext();
         //TODO: 此处如果使用for(T item : expr)方法循环、使用return;方式跳出循环,数据不会写入到文件中、
@@ -530,7 +558,7 @@ public class POIExcelUtil {
 
     /**
      * 解析sheet的内容,不包含图片、(没有处理表格标题所占的Row)
-     * 超链接使用 value = name:url 的格式存在Map中、
+     * 超链接使用 value = name---url 的格式存在Map中、
      *
      * @param sheet     工作簿、xls,xlsx均可解析、
      * @param evaluator 公式计算器. 遇到单元格是FORMULA类型,传入此值,获得计算后的值,如果为null、则表示获取公式的表达式、
@@ -557,7 +585,7 @@ public class POIExcelUtil {
                 CellAddress address = cell.getAddress();
                 if (cell.getHyperlink() != null) {
                     String linkAddr = cell.getHyperlink().getAddress();
-                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + ":" + linkAddr);//key是表头、
+                    map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue + "---" + linkAddr);//key是表头、
                     continue;
                 }
                 //cell.getCellComment();//获取标注、注释
@@ -693,7 +721,6 @@ public class POIExcelUtil {
             inputStream = new FileInputStream(filePath);
             BufferedImage bufferedImage = ImageIO.read(inputStream);
             ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
-            int index = filePath.lastIndexOf(".");
             String mimeType = Files.probeContentType(Paths.get(filePath));
             ImageIO.write(bufferedImage, mimeType.split("/")[1], byteArrayOS);
             bufferedImage.flush();

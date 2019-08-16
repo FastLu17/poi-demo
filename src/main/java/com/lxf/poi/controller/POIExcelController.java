@@ -23,6 +23,7 @@ import java.io.*;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -721,7 +722,7 @@ public class POIExcelController {
         HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
         CellStyle newStyle = excelUtil.getStyle(workbook);
 
-        CellStyle linkStyle = excelUtil.getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
+        CellStyle linkStyle = excelUtil.getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
         HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
         System.out.println("lastRow.getRowNum() = " + lastRow.getRowNum());
         System.out.println("lastRowStyle = " + lastRowStyle);
@@ -808,7 +809,7 @@ public class POIExcelController {
         Map<String, Object> data2 = new HashMap<>();
         data2.put("序号", 2);
         data2.put("文字", "中国");
-        data2.put("日期", LocalDate.now());
+        data2.put("日期", new Date());
         data2.put("数字", 199.99);
         data2.put("超链接", "百度---http://www.baidu.com");
         data2.put("图片", BASE_DIRECTORY_PATH + "2.jpg");
@@ -816,7 +817,7 @@ public class POIExcelController {
         Map<String, Object> data3 = new HashMap<>();
         data3.put("序号", 3);
         data3.put("文字", "中国");
-        data3.put("日期", LocalDateTime.now());
+        data3.put("日期", Calendar.getInstance());//这个格式无法正常解析、
         data3.put("数字", 199.99);
         data3.put("超链接", "百度---http://www.baidu.com");
         data3.put("图片", BASE_DIRECTORY_PATH + "3.jpg");
