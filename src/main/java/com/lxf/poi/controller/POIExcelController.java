@@ -98,8 +98,8 @@ public class POIExcelController {
         //设置打印区域
         workbook.setPrintArea(0, 0, 9, 0, 9);
 
-        Font font = excelUtil.getFont(workbook, IndexedColors.RED.index, false);
-        Font font2 = excelUtil.getFont(workbook, IndexedColors.GREEN.index, false);
+        Font font = excelUtil.getFont(workbook, IndexedColors.RED.index, false, null);
+        Font font2 = excelUtil.getFont(workbook, IndexedColors.GREEN.index, false, null);
 
         //富文本、
         HSSFRichTextString richString = new HSSFRichTextString("Hello, World!");
@@ -344,7 +344,7 @@ public class POIExcelController {
         HSSFTextbox textBox = patriarch.createTextbox(anchorTextBox);
         textBox.setLineStyle(HSSFShape.LINESTYLE_SOLID);
         HSSFRichTextString richTextString = new HSSFRichTextString("This is a test");
-        richTextString.applyFont(excelUtil.getFont(workbook, IndexedColors.RED.index, true));
+        richTextString.applyFont(excelUtil.getFont(workbook, IndexedColors.RED.index, true, null));
         textBox.setString(richTextString);
         textBox.setVerticalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
         textBox.setHorizontalAlignment(HSSFTextbox.VERTICAL_ALIGNMENT_CENTER);
@@ -503,7 +503,7 @@ public class POIExcelController {
         HSSFSheet sheet = workbook.createSheet();
         HSSFCell cell = sheet.createRow(0).createCell(0);
         HSSFCellStyle style = workbook.createCellStyle();
-        Font font = excelUtil.getFont(workbook, IndexedColors.BLUE.index, false);
+        Font font = excelUtil.getFont(workbook, IndexedColors.BLUE.index, false, null);
         style.setFont(font);
         cell.setCellStyle(style);//为单元格设置样式,否则样式不生效、
         cell.setHyperlink(hyperlink);
@@ -652,12 +652,6 @@ public class POIExcelController {
 //                    cell.getCellComment();//获取标注、注释
                     map.put(row0.getCell(address.getColumn()).getStringCellValue(), formatValue);//key是表头、
                 }
-//                for (String key : pictureDataMap.keySet()) {
-//                    if (key.startsWith(row.getRowNum() + "-")) {
-//                        int column = Integer.parseInt(key.split("-")[1]);
-//                        map.put(row0.getCell(column).getStringCellValue(), pictureDataMap.get(key));
-//                    }
-//                }
                 pictureDataMap.keySet().stream().filter(key -> key.startsWith(row.getRowNum() + "-"))
                         .forEach(key -> map.put(row0.getCell(Integer.parseInt(key.split("-")[1])).getStringCellValue(), pictureDataMap.get(key)));
                 dataList.add(map);
@@ -679,7 +673,7 @@ public class POIExcelController {
                 excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
             }
         }
-        System.out.println("mapList = " + mapList);
+        System.out.println("mapList = " + mapList.size());
         workbook.close();
     }
 
@@ -719,16 +713,32 @@ public class POIExcelController {
         HSSFSheet sheetAt = workbook.getSheetAt(0);
         sheetAt.autoSizeColumn(2);
 
+        HSSFRow lastRow = sheetAt.getRow(sheetAt.getLastRowNum());
+        Font linkFont = excelUtil.getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
+        float lastRowHeightInPoints = lastRow.getHeightInPoints();
+        HSSFCellStyle lastRowStyle = lastRow.getRowStyle();
+
         HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
-        CellStyle style = excelUtil.getStyle(workbook);
+        CellStyle newStyle = excelUtil.getStyle(workbook);
+
+        CellStyle linkStyle = excelUtil.getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
         HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
+        System.out.println("lastRow.getRowNum() = " + lastRow.getRowNum());
+        System.out.println("lastRowStyle = " + lastRowStyle);
+        System.out.println("lastRowHeightInPoints = " + lastRowHeightInPoints);
+        System.out.println("sheetAt.getDefaultRowHeightInPoints() = " + sheetAt.getDefaultRowHeightInPoints());
+
+
         if (row0 == null) return;
         int lastRowNum = sheetAt.getLastRowNum();
-        System.out.println("lastRowNum = " + lastRowNum);
         for (Map<String, Object> map : mapList) {
             lastRowNum++;
-            System.out.println("lastRowNum = " + lastRowNum);
             HSSFRow row = sheetAt.createRow(lastRowNum);
+            row.setHeightInPoints(lastRowHeightInPoints);
+            //复制最后一行(原始)的RowStyle、
+            if (!excelUtil.isRowEmpty(lastRow) && lastRowStyle != null) {
+                row.setRowStyle(lastRowStyle);
+            }//部分样式无法正常复制、
             for (int column = 0; column < map.entrySet().size(); column++) {
                 //表头、
                 String key = row0.getCell(column).getStringCellValue();
@@ -737,10 +747,10 @@ public class POIExcelController {
                 if (value.toString().startsWith(BASE_DIRECTORY_PATH)) {
                     String absFilePath = value.toString();
                     createPicture(workbook, patriarch, row, (short) column, absFilePath);
-                } else if (value.toString().contains("---")) {//超链接
+                } else if (value.toString().contains("---")) {
                     String[] split = value.toString().split("---");//超链接需要指定固定的格式、
                     HSSFCell cell = row.createCell(column);
-                    cell.setCellStyle(style);
+                    cell.setCellStyle(linkStyle);//超链接样式无法复制下划线,需要单独添加
                     HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
                     hyperlink.setAddress(split[1]);
                     //没生效、如果不进行cell.setCellValue(split[0]);则显示空白
@@ -750,7 +760,8 @@ public class POIExcelController {
 
                 } else {
                     HSSFCell cell = row.createCell(column);
-                    cell.setCellStyle(style);
+                    if (excelUtil.isRowEmpty(lastRow) || lastRowStyle == null)
+                        cell.setCellStyle(newStyle);
                     excelUtil.setCellValue(cell, value);
                 }
             }
@@ -781,5 +792,84 @@ public class POIExcelController {
             HSSFClientAnchor anchor = excelUtil.getAnchor(16, 48, 975, 239, i, row.getRowNum(), i, row.getRowNum());
             patriarch.createPicture(anchor, index);
         }
+    }
+
+    @GetMapping("addDataByUtils")
+    public void addDataByUtils() throws Exception {
+        List<Map<String, Object>> mapList = new ArrayList<>();
+        Map<String, Object> data = new HashMap<>();
+        data.put("序号", 1);
+        data.put("文字", "中国");
+        data.put("日期", LocalDate.now());
+        data.put("数字", 199.99);
+        data.put("超链接", "百度---http://www.baidu.com");
+        data.put("图片", BASE_DIRECTORY_PATH + "1.jpg");
+
+        Map<String, Object> data2 = new HashMap<>();
+        data2.put("序号", 2);
+        data2.put("文字", "中国");
+        data2.put("日期", LocalDate.now());
+        data2.put("数字", 199.99);
+        data2.put("超链接", "百度---http://www.baidu.com");
+        data2.put("图片", BASE_DIRECTORY_PATH + "2.jpg");
+
+        Map<String, Object> data3 = new HashMap<>();
+        data3.put("序号", 3);
+        data3.put("文字", "中国");
+        data3.put("日期", LocalDateTime.now());
+        data3.put("数字", 199.99);
+        data3.put("超链接", "百度---http://www.baidu.com");
+        data3.put("图片", BASE_DIRECTORY_PATH + "3.jpg");
+
+        mapList.add(data);
+        mapList.add(data2);
+        mapList.add(data3);
+
+        excelUtil.addNonEmptyRow(XLS_TEMPLATE_FILE_PATH, BASE_DIRECTORY_PATH, mapList, null);
+        System.out.println("测试异步新增：" + mapList.size() + "条数据");
+    }
+
+    @GetMapping("createXlsWithData")
+    public void createXlsWithData() throws Exception {
+        List<Map<String, Object>> mapList = new ArrayList<>();
+        Map<String, Object> data = new HashMap<>();
+        data.put("序号", 1);
+        data.put("文字", "中国");
+        data.put("日期", LocalDate.now());
+        data.put("数字", 199.99);
+        data.put("超链接", "百度---http://www.baidu.com");
+        data.put("图片", BASE_DIRECTORY_PATH + "1.jpg");
+
+        Map<String, Object> data2 = new HashMap<>();
+        data2.put("序号", 2);
+        data2.put("文字", "中国");
+        data2.put("日期", LocalDate.now());
+        data2.put("数字", 199.99);
+        data2.put("超链接", "百度---http://www.baidu.com");
+        data2.put("图片", BASE_DIRECTORY_PATH + "2.jpg");
+
+        Map<String, Object> data3 = new HashMap<>();
+        data3.put("序号", 3);
+        data3.put("文字", "中国");
+        data3.put("日期", LocalDateTime.now());
+        data3.put("数字", 199.99);
+        data3.put("超链接", "百度---http://www.baidu.com");
+        data3.put("图片", BASE_DIRECTORY_PATH + "3.jpg");
+
+        mapList.add(data);
+        mapList.add(data2);
+        mapList.add(data3);
+
+        List<String> headerList = new ArrayList<>();
+        headerList.add("序号");
+        headerList.add("文字");
+        headerList.add("日期");
+        headerList.add("数字");
+        headerList.add("超链接");
+        headerList.add("图片");
+
+        excelUtil.createXlsAndInsertData(BASE_DIRECTORY_PATH + "HSSF测试createWithData.xls", BASE_DIRECTORY_PATH, headerList,
+                mapList, 28F, 11, null);
+        System.out.println("测试异步创建Excel文件,并填充：" + mapList.size() + "条数据");
     }
 }

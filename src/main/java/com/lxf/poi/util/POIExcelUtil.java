@@ -6,6 +6,7 @@ import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellUtil;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Async;
@@ -22,7 +23,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
- * 操作Excel的工具类、
+ * 操作Excel的工具类、没有处理具有表格标题的Excel文件、 getTableTitleRegion()可以获取表格标题的范围、
  *
  * @author 小66
  * @create 2019-08-12 16:29
@@ -167,16 +168,17 @@ public class POIExcelUtil {
      *
      * @param workbook    xls文档、
      * @param font        字体, 默认：13字号、Consolas、黑色
+     * @param alignment   水平位置、默认：HorizontalAlignment.CENTER
      * @param borderStyle 边框样式, 默认：BorderStyle.THIN
      * @param borderColor 边框颜色, 默认：IndexedColors.BLACK.index
      * @param wrapText    是否换行, 默认：false
      * @param lock        是否锁定, 默认：false
      * @return CellStyle
      */
-    public CellStyle getStyle(Workbook workbook, Font font, BorderStyle borderStyle, short borderColor, boolean wrapText, boolean lock) {
+    public CellStyle getStyle(Workbook workbook, Font font, HorizontalAlignment alignment, BorderStyle borderStyle, short borderColor, boolean wrapText, boolean lock) {
         CellStyle style = workbook.createCellStyle();
 
-        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setAlignment(alignment);
         style.setVerticalAlignment(VerticalAlignment.CENTER);
 
         //设置边框属性
@@ -205,13 +207,28 @@ public class POIExcelUtil {
     }
 
     /**
-     * 获取自定义的默认样式、黑色-细的(THIN)边框,不换行,不锁定,自定义默认字体(Consolas)、
+     * 获取自定义的默认样式：水平居中,黑色-细的(THIN)边框,不换行,不锁定,自定义默认字体(Consolas)、
      *
      * @param workbook workbook
      * @return CellStyle
      */
     public CellStyle getStyle(Workbook workbook) {
-        return getStyle(workbook, getFont(workbook), BorderStyle.THIN,
+        return getStyle(workbook, getFont(workbook), HorizontalAlignment.CENTER, BorderStyle.THIN,
+                IndexedColors.BLACK.index, false, false);
+    }
+
+    /**
+     * 获取默认样式、黑色-细的(THIN)边框,不换行,不锁定、
+     * 字体样式:需要自定义、
+     *
+     * @param workbook  workbook
+     * @param font      自定义样式、
+     * @param alignment 水平位置
+     * @return CellStyle
+     */
+    public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment) {
+        if (alignment == null) alignment = HorizontalAlignment.CENTER;
+        return getStyle(workbook, font, alignment, BorderStyle.THIN,
                 IndexedColors.BLACK.index, false, false);
     }
 
@@ -231,7 +248,8 @@ public class POIExcelUtil {
     public Font getFont(Workbook workbook, int fontHeightInPoints, String fontName,
                         short color, boolean bold, boolean italic, boolean strikeout, byte underLine) {
         Font font = workbook.createFont();
-        font.setFontHeightInPoints((short) fontHeightInPoints);//设置字号、
+        if (fontHeightInPoints > 0)
+            font.setFontHeightInPoints((short) fontHeightInPoints);//设置字号、
         font.setFontName(fontName);
         font.setBold(bold);
         font.setItalic(italic);//斜体
@@ -257,17 +275,33 @@ public class POIExcelUtil {
     }
 
     /**
-     * 获取自定义的默认样式、默认：13字号、Consolas、没有下划线、不斜体
+     * 获取自定义的默认样式、默认：Consolas、黑色、不加粗、没有下划线、不斜体
      * 注意：不要循环创建字体样式,尽量重用、
      *
-     * @param workbook workbook
-     * @param color    eg:IndexedColors.GREEN.index,HSSFColor.RED.index
-     * @param bold     是否加粗
+     * @param workbook           workbook
+     * @param fontHeightInPoints 字号大小、
+     * @param bold               是否加粗
      * @return Font
      */
-    public Font getFont(Workbook workbook, short color, boolean bold) {
+    public Font getFont(Workbook workbook, int fontHeightInPoints, boolean bold) {
+        return getFont(workbook, fontHeightInPoints, "Consolas",
+                IndexedColors.BLACK.index, bold, false, false, Font.U_NONE);
+    }
+
+    /**
+     * 获取自定义的默认样式、默认：13字号、Consolas、不斜体
+     * 注意：不要循环创建字体样式,尽量重用、
+     *
+     * @param workbook  workbook
+     * @param color     eg:IndexedColors.GREEN.index,HSSFColor.RED.index
+     * @param bold      是否加粗
+     * @param underLine underLine的样式,默认:Font.U_NONE
+     * @return Font
+     */
+    public Font getFont(Workbook workbook, short color, boolean bold, @Nullable Byte underLine) {
+        if (underLine == null) underLine = Font.U_NONE;
         return getFont(workbook, 13, "Consolas",
-                color, bold, false, false, Font.U_NONE);
+                color, bold, false, false, underLine);
     }
 
 
@@ -291,7 +325,155 @@ public class POIExcelUtil {
         sheet.addMergedRegion(rangeAddress);//没测试过具体效果、
     }
 
+
     /**
+     * 获取当前sheet文件中合并的单元格是不是表格的标题
+     *
+     * @param sheet sheet
+     * @return CellRangeAddress
+     */
+    public CellRangeAddress getTableTitleRegion(Sheet sheet) {
+        List<CellRangeAddress> rangeAddressList = sheet.getMergedRegions();
+        if (rangeAddressList == null || rangeAddressList.size() <= 0)
+            return null;
+        for (CellRangeAddress address : rangeAddressList) {
+            int firstRow = address.getFirstRow();
+            int lastRow = address.getLastRow();
+            int firstColumn = address.getFirstColumn();
+            int lastColumn = address.getLastColumn();
+            if (firstRow == 0 && firstColumn == 0) {//此时这个合并的单元格是表格的标题、(正常情况下)
+                return address;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 异步创建Excel文件、并补全数据、
+     *
+     * @param absFilePath       生成的文件路径、
+     * @param picturePrefixPath 图片文件夹的存储路径、(没有图片,则为null)
+     * @param tableHeader       表头字段名、
+     * @param mapList           数据
+     * @param splitLink         超链接分隔符、(没有超链接,则为null)
+     * @throws Exception IO
+     */
+    @Async
+    public void createXlsAndInsertData(String absFilePath, @Nullable String picturePrefixPath, List<String> tableHeader, List<Map<String, Object>> mapList,
+                                       @Nullable Float rowHeightInPoints, @Nullable Integer defaultColumnWidth, @Nullable String splitLink) throws Exception {
+        if (StringUtils.isEmpty(splitLink)) splitLink = "---";
+
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        HSSFSheet sheetAt = workbook.createSheet();
+        //sheetAt.setDefaultRowHeightInPoints(36);//对当前新增的行、没有效果.
+        if (defaultColumnWidth != null) sheetAt.setDefaultColumnWidth(defaultColumnWidth);//设置列宽、
+
+        CellStyle headerStyle = getStyle(workbook, getFont(workbook, 16, true), HorizontalAlignment.CENTER);
+        CellStyle bodyStyle = getStyle(workbook);
+        Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
+
+        HSSFRow row0 = sheetAt.createRow(0);
+        if (rowHeightInPoints != null) row0.setHeightInPoints(rowHeightInPoints + 6);//设置表头行高、
+        for (int i = 0; i < tableHeader.size(); i++) {
+            CellUtil.createCell(row0, i, tableHeader.get(i), headerStyle);
+            //sheetAt.autoSizeColumn(i);自动调整宽度,效果不好、可以在Style中设置换行、
+        }
+        createRowsWithData(picturePrefixPath, mapList, splitLink, sheetAt, bodyStyle, linkStyle, rowHeightInPoints);
+
+        workbook.write(new File(absFilePath));
+        workbook.close();
+    }
+
+    /**
+     * 不可异步、否则插入数据之前,流已被关闭、
+     * <p>
+     * 使用默认的bodyStyle和linkStyle参数、
+     *
+     * @param picturePrefixPath 图片存储路径 (正常是多张图片是统一前缀的)
+     * @param mapList           参数
+     * @param splitLink         超链接拼接符、
+     * @param sheetAt           sheet
+     * @param rowHeightInPoints 行高、如果不传,则获取最后一行的行高、
+     * @throws IOException IO
+     */
+    private void createRowsWithData(String picturePrefixPath, List<Map<String, Object>> mapList, String splitLink, HSSFSheet sheetAt, @Nullable Float rowHeightInPoints) throws IOException {
+        HSSFWorkbook workbook = sheetAt.getWorkbook();
+        CellStyle bodyStyle = getStyle(workbook);
+        Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
+        createRowsWithData(picturePrefixPath, mapList, splitLink, sheetAt, bodyStyle, linkStyle, rowHeightInPoints);
+    }
+
+    /**
+     * 不可异步、否则插入数据之前,流已被关闭、
+     *
+     * @param picturePrefixPath 图片路径前缀
+     * @param mapList           数据
+     * @param splitLink         分隔符
+     * @param sheetAt           工作簿
+     * @param bodyStyle         单元格样式、
+     * @param linkStyle         超链接样式、
+     * @param rowHeightInPoints 行高、如果为value = null或 value = <= 0,则获取最后一行的行高、
+     * @throws IOException IO
+     */
+    private void createRowsWithData(String picturePrefixPath, List<Map<String, Object>> mapList, String splitLink,
+                                    HSSFSheet sheetAt, CellStyle bodyStyle, CellStyle linkStyle, Float rowHeightInPoints) throws IOException {
+        HSSFWorkbook workbook = sheetAt.getWorkbook();
+        HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
+        HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
+        HSSFRow lastRow = sheetAt.getRow(sheetAt.getLastRowNum());
+        if (lastRow == null) throw new RuntimeException(sheetAt.getSheetName() + " is empty");
+        if (rowHeightInPoints == null || rowHeightInPoints <= 0) rowHeightInPoints = lastRow.getHeightInPoints();
+        HSSFCellStyle lastRowStyle = lastRow.getRowStyle();
+
+        int lastRowNum = sheetAt.getLastRowNum();
+        lastRowNum++;
+        for (int i = 0; i < mapList.size(); i++) {
+            HSSFRow row = sheetAt.createRow(i + lastRowNum);
+            row.setHeightInPoints(rowHeightInPoints);
+            //复制最后一行(原始)的行属性、
+            if (!isRowEmpty(lastRow) && lastRowStyle != null) {
+                row.setRowStyle(lastRowStyle);
+            }
+            Map<String, Object> map = mapList.get(i);
+            for (int column = 0; column < map.entrySet().size(); column++) {
+                //表头、
+                String key = row0.getCell(column).getStringCellValue();
+                Object value = map.get(key);
+                if (value == null || value.equals("")) continue;
+
+                if (patriarch != null && value.toString().startsWith(picturePrefixPath)) {//图片路径、
+                    String absPicturePath = value.toString();
+                    /*
+                     * TODO: 此处使用异步,会导致图片没有写入的时候,流已被关闭(其他文字数据正常写入)、
+                     *       后续使用NIO试试、
+                     * */
+                    createPicture(workbook, patriarch, row, column, absPicturePath);
+
+                } else if (value.toString().contains(splitLink)) {//超链接
+                    String[] strings = value.toString().split(splitLink);//超链接需要指定固定的格式、
+                    HSSFCell cell = row.createCell(column);
+                    cell.setCellStyle(linkStyle);
+                    HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
+                    hyperlink.setAddress(strings[1]);
+                    //setShortFilename()没生效、如果不进行cell.setCellValue(strings[0]);则显示空白
+                    hyperlink.setShortFilename(strings[0]);
+                    cell.setHyperlink(hyperlink);
+                    cell.setCellValue(strings[0]);//显示超链接的名称、
+                } else {
+                    HSSFCell cell = row.createCell(column);
+                    if (isRowEmpty(lastRow) || lastRowStyle == null)
+                        cell.setCellStyle(bodyStyle);
+                    setCellValue(cell, value);
+                }
+            }
+        }
+    }
+
+    /**
+     * 异步插入数据、
+     * <p>
      * 在第一个不为空(有数据)的sheet工作簿的最后插入数据、
      *
      * @param absFilePath       Excel文件路径
@@ -300,62 +482,36 @@ public class POIExcelUtil {
      * @param splitLink         超链接的拼接字符串、默认"---"
      * @throws IOException
      */
-    //TODO:无法实现数据插入,不显示数据、
+    @Async
     public void addNonEmptyRow(String absFilePath, String picturePrefixPath, List<Map<String, Object>> mapList, @Nullable String splitLink) throws IOException {
         if (StringUtils.isEmpty(splitLink)) splitLink = "---";
 
         FileInputStream fileInputStream = new FileInputStream(absFilePath);
         HSSFWorkbook workbook = new HSSFWorkbook(fileInputStream);
-        for (Sheet rows : workbook) {
-            if (!(rows instanceof HSSFSheet)) continue;
-            HSSFSheet sheetAt = (HSSFSheet) rows;
-            HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
-            CellStyle style = getStyle(workbook);
+        Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
+        boolean flag = true;
+        boolean hasNext = workbook.iterator().hasNext();
+        //TODO: 此处如果使用for(T item : expr)方法循环、使用return;方式跳出循环,数据不会写入到文件中、
+        while (hasNext && flag) {
+            Sheet sheet = workbook.iterator().next();
+            if (!(sheet instanceof HSSFSheet)) continue;
+            HSSFSheet sheetAt = (HSSFSheet) sheet;
             HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
             if (row0 == null) continue;//此sheet工作簿为空(没有数据)、
-            int lastRowNum = sheetAt.getLastRowNum();
-            for (Map<String, Object> map : mapList) {
-                lastRowNum++;
-                HSSFRow row = sheetAt.createRow(lastRowNum);
-                for (int column = 0; column < map.entrySet().size(); column++) {
-                    //表头、
-                    String key = row0.getCell(column).getStringCellValue();
-                    Object value = map.get(key);
-
-                    if (value.toString().startsWith(picturePrefixPath)) {//图片路径、
-                        String absPicturePath = value.toString();
-                        createPicture(workbook, patriarch, row, (short) column, absPicturePath);
-                    } else if (value.toString().contains(splitLink)) {//超链接
-                        String[] strings = value.toString().split(splitLink);//超链接需要指定固定的格式、
-                        HSSFCell cell = row.createCell(column);
-                        cell.setCellStyle(style);
-                        HSSFHyperlink hyperlink = workbook.getCreationHelper().createHyperlink(HyperlinkType.URL);
-                        hyperlink.setAddress(strings[1]);
-                        //没生效、如果不进行cell.setCellValue(strings[0]);则显示空白
-                        hyperlink.setShortFilename(strings[0]);
-                        cell.setHyperlink(hyperlink);
-                        cell.setCellValue(strings[0]);//显示超链接的名称、
-                    } else {
-                        HSSFCell cell = row.createCell(column);
-                        cell.setCellStyle(style);
-                        setCellValue(cell, value);
-                    }
-                }
-            }
-            //TODO: 不能为每张表都添加同样的数据、需要根据条件跳出、
-            return;
+            createRowsWithData(picturePrefixPath, mapList, splitLink, sheetAt, null);
+            flag = false;
         }
         workbook.write(new File(absFilePath));
         closeStream(workbook, fileInputStream);
     }
 
-    private void createPicture(HSSFWorkbook workbook, HSSFPatriarch patriarch, HSSFRow row, short i, String absFilePath) throws IOException {
+    private void createPicture(HSSFWorkbook workbook, HSSFPatriarch patriarch, HSSFRow row, int column, String absFilePath) throws IOException {
         ByteArrayOutputStream byteArrayOS = readImage(absFilePath);
-        //获取MimeType、
+        //        //获取MimeType、
         String contentType = Files.probeContentType(Paths.get(absFilePath));
 
         int index;
-        switch (contentType) {
+        switch (contentType) {//TODO: 根据需求添加图片类型的判断、
             case MimeTypeUtils.IMAGE_JPEG_VALUE:
                 index = workbook.addPicture(byteArrayOS.toByteArray(), Workbook.PICTURE_TYPE_JPEG);
                 break;
@@ -367,7 +523,7 @@ public class POIExcelUtil {
         }
         if (index != -1) {
             //图片所占单元格大小、按需设置、
-            HSSFClientAnchor anchor = getAnchor(16, 48, 975, 239, i, row.getRowNum(), i, row.getRowNum());
+            HSSFClientAnchor anchor = getAnchor(16, 48, 975, 239, column, row.getRowNum(), column, row.getRowNum());
             patriarch.createPicture(anchor, index);
         }
     }
@@ -496,36 +652,32 @@ public class POIExcelUtil {
         return pictureDataMap;
     }
 
-    //判断单元格是不是合并的、
-    public void isMergingRegion() {
-
-    }
-
     /**
-     * 异步保存Excel中读取数据的图片、
+     * 异步保存Excel中的图片数据到指定的文件夹、
      * 如果需要获取存储路径,返回值改为Future<String>对象即可、
      *
-     * @param absPath
-     * @param data
+     * @param absPath 文件路径
+     * @param data    PictureData对象、通过HSSFPicture获取、
      */
     @Async
     public void writeImage(@NonNull String absPath, @NonNull PictureData data) {
         if (StringUtils.isEmpty(absPath) || data == null)
             throw new RuntimeException("absPath 和 data 不能为null.");
-        BufferedImage bufferedImage;
         ByteArrayInputStream inputStream = null;
         FileOutputStream fileOutputStream = null;
-        BufferedOutputStream bufferedOutputStream = null;
+        BufferedImage bufferedImage;
+        BufferedOutputStream bufferedOutputStream;
         try {
             inputStream = new ByteArrayInputStream(data.getData());
             bufferedImage = ImageIO.read(inputStream);
             fileOutputStream = new FileOutputStream(absPath + UUID.randomUUID().toString() + "." + data.getMimeType().split("/")[1]);
             bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+            //内部会关闭outPutStream、
             ImageIO.write(bufferedImage, data.getMimeType().split("/")[1], bufferedOutputStream);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            closeStream(inputStream, fileOutputStream, bufferedOutputStream);
+            closeStream(inputStream, fileOutputStream);
         }
     }
 
@@ -542,7 +694,8 @@ public class POIExcelUtil {
             BufferedImage bufferedImage = ImageIO.read(inputStream);
             ByteArrayOutputStream byteArrayOS = new ByteArrayOutputStream();
             int index = filePath.lastIndexOf(".");
-            ImageIO.write(bufferedImage, filePath.substring(index + 1), byteArrayOS);
+            String mimeType = Files.probeContentType(Paths.get(filePath));
+            ImageIO.write(bufferedImage, mimeType.split("/")[1], byteArrayOS);
             bufferedImage.flush();
             return byteArrayOS;
         } finally {
@@ -588,10 +741,11 @@ public class POIExcelUtil {
     /**
      * 判断此行是否为空行,有空格
      *
-     * @param row
+     * @param row 当前row
      * @return true OR false
      */
-    private boolean isRowEmpty(Row row) {
+    public boolean isRowEmpty(Row row) {
+        if (row == null) return true;
         for (Cell cell : row) {
             if (cell != null && cell.getCellTypeEnum() != CellType.BLANK && !StringUtils.isEmpty(getStringCellValue(cell)))
                 return false;
