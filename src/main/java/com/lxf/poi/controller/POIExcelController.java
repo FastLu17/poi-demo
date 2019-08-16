@@ -54,8 +54,6 @@ public class POIExcelController {
 //        HSSFWorkbook workbook = new HSSFWorkbook(system);  //多种方式可以创建Workbook对象、
         HSSFWorkbook workbook = new HSSFWorkbook();
 
-        HSSFDataFormat format = workbook.createDataFormat();//格式化
-
         HSSFSheet sheet = workbook.createSheet("sheet");
         sheet.setSelected(true);//设置默认被选中、没生效
 
@@ -722,7 +720,7 @@ public class POIExcelController {
         HSSFPatriarch patriarch = sheetAt.createDrawingPatriarch();
         CellStyle newStyle = excelUtil.getStyle(workbook);
 
-        CellStyle linkStyle = excelUtil.getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
+        CellStyle linkStyle = excelUtil.getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
         HSSFRow row0 = sheetAt.getRow(sheetAt.getFirstRowNum());
         System.out.println("lastRow.getRowNum() = " + lastRow.getRowNum());
         System.out.println("lastRowStyle = " + lastRowStyle);

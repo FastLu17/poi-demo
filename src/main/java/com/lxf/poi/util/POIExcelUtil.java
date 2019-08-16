@@ -255,10 +255,10 @@ public class POIExcelUtil {
      * @param alignment 水平位置
      * @return CellStyle
      */
-    public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment,String format) {
+    public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment) {
         if (alignment == null) alignment = HorizontalAlignment.CENTER;
         return getStyle(workbook, font, alignment, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false,format);
+                IndexedColors.BLACK.index, false, false,null);
     }
 
     /**
@@ -397,10 +397,10 @@ public class POIExcelUtil {
         //sheetAt.setDefaultRowHeightInPoints(36);//对当前新增的行、没有效果.
         if (defaultColumnWidth != null) sheetAt.setDefaultColumnWidth(defaultColumnWidth);//设置列宽、
 
-        CellStyle headerStyle = getStyle(workbook, getFont(workbook, 16, true), HorizontalAlignment.CENTER,null);
+        CellStyle headerStyle = getStyle(workbook, getFont(workbook, 16, true), HorizontalAlignment.CENTER);
         CellStyle bodyStyle = getStyle(workbook);
         Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
-        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
 
         HSSFRow row0 = sheetAt.createRow(0);
         if (rowHeightInPoints != null) row0.setHeightInPoints(rowHeightInPoints + 6);//设置表头行高、
@@ -430,7 +430,7 @@ public class POIExcelUtil {
         HSSFWorkbook workbook = sheetAt.getWorkbook();
         CellStyle bodyStyle = getStyle(workbook);
         Font linkFont = getFont(workbook, IndexedColors.BLUE.index, false, Font.U_SINGLE);
-        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT,null);
+        CellStyle linkStyle = getStyle(workbook, linkFont, HorizontalAlignment.LEFT);
         createRowsWithData(picturePrefixPath, mapList, splitLink, sheetAt, bodyStyle, linkStyle, rowHeightInPoints);
     }
 
