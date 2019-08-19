@@ -14,6 +14,7 @@ import org.apache.poi.ss.util.CellUtil;
 import org.apache.poi.ss.util.RegionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.MimeTypeUtils;
+import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,10 +28,6 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author 小66
@@ -672,15 +669,12 @@ public class POIExcelController {
             //这个Key是图片列的表头,如果图片不是一列、则对Map进行遍历.
             Object pictureData = map.get("图片");
             if (pictureData instanceof PictureData) {
-                Future<String> future = excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
-                Executors.newCachedThreadPool().execute(() -> {
-                    while (!future.isDone()) {
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(1500);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    }
+                ListenableFuture<String> future = excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
+                /*
+                 *   ListenableFuture可以直接处理异步返回结果 --> 不需要再使用Executors.newCachedThreadPool().execute()、
+                 *   Future没有办法直接处理异步返回结果、
+                 * */
+                future.addCallback(result -> {
                     try {
                         String path = future.get();
                         map.put("图片", path);
@@ -689,7 +683,25 @@ public class POIExcelController {
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                });
+                }, ex -> System.out.println("抛出异常 = " + ex.getLocalizedMessage()));
+
+//                Executors.newCachedThreadPool().execute(() -> {
+//                    while (!future.isDone()) {
+//                        try {
+//                            TimeUnit.MILLISECONDS.sleep(1500);
+//                        } catch (InterruptedException e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+//                    try {
+//                        String path = future.get();
+//                        map.put("图片", path);
+//                        //执行插入数据的操作、
+//                        System.out.println("成功插入数据: " + map);
+//                    } catch (Exception e) {
+//                        e.printStackTrace();
+//                    }
+//                });
             }
         }
         System.out.println("mapList = " + mapList.size());

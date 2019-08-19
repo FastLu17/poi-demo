@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.AsyncResult;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.util.concurrent.ListenableFuture;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -25,7 +26,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.Future;
 
 /**
  * 操作Excel的工具类、没有处理具有表格标题的Excel文件、 getTableTitleRegion()可以获取表格标题的范围、
@@ -688,12 +688,17 @@ public class POIExcelUtil {
     /**
      * 异步保存Excel中的图片数据到指定的文件夹、
      * 如果需要获取存储路径,返回值改为Future<String>对象即可、
+     * <p>
+     * -->AsyncResult对象是ListenableFuture的实现类、ListenableFuture继承Future接口、
+     * ListenableFuture相对于Future接口来说、操作性更强、(不需要使用get()这个阻塞的方法、)
+     * <p>
+     * 注意：不可直接返回AsyncResult、否则会抛出ListenableFutureTask can not cast to AsyncResult的异常、
      *
      * @param absPath 文件路径
      * @param data    PictureData对象、通过HSSFPicture获取、
      */
     @Async
-    public Future<String> writeImage(@NonNull String absPath, @NonNull PictureData data) {
+    public ListenableFuture<String> writeImage(@NonNull String absPath, @NonNull PictureData data) {
         if (StringUtils.isEmpty(absPath) || data == null)
             throw new RuntimeException("absPath 和 data 不能为null.");
         absPath = absPath + UUID.randomUUID().toString() + "." + data.getMimeType().split("/")[1];
@@ -708,7 +713,7 @@ public class POIExcelUtil {
             return new AsyncResult<>(absPath);
         } catch (IOException e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             if (fileChannel != null) {
                 try {
                     fileChannel.close();
