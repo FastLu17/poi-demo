@@ -10,6 +10,7 @@ import org.apache.poi.ss.util.CellUtil;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.AsyncResult;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
@@ -17,10 +18,14 @@ import org.springframework.util.StringUtils;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.Future;
 
 /**
  * 操作Excel的工具类、没有处理具有表格标题的Excel文件、 getTableTitleRegion()可以获取表格标题的范围、
@@ -217,7 +222,7 @@ public class POIExcelUtil {
         //设置锁定、
         style.setLocked(lock);
 
-        if (format!=null)
+        if (format != null)
             style.setDataFormat(workbook.createDataFormat().getFormat(format));
 
         return style;
@@ -231,7 +236,7 @@ public class POIExcelUtil {
      */
     public CellStyle getStyle(Workbook workbook) {
         return getStyle(workbook, getFont(workbook), HorizontalAlignment.CENTER, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false,null);
+                IndexedColors.BLACK.index, false, false, null);
     }
 
     /**
@@ -243,7 +248,7 @@ public class POIExcelUtil {
      */
     public CellStyle getStyle(Workbook workbook, String format) {
         return getStyle(workbook, getFont(workbook), HorizontalAlignment.CENTER, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false,format);
+                IndexedColors.BLACK.index, false, false, format);
     }
 
     /**
@@ -258,7 +263,7 @@ public class POIExcelUtil {
     public CellStyle getStyle(Workbook workbook, Font font, @Nullable HorizontalAlignment alignment) {
         if (alignment == null) alignment = HorizontalAlignment.CENTER;
         return getStyle(workbook, font, alignment, BorderStyle.THIN,
-                IndexedColors.BLACK.index, false, false,null);
+                IndexedColors.BLACK.index, false, false, null);
     }
 
     /**
@@ -688,25 +693,49 @@ public class POIExcelUtil {
      * @param data    PictureData对象、通过HSSFPicture获取、
      */
     @Async
-    public void writeImage(@NonNull String absPath, @NonNull PictureData data) {
+    public Future<String> writeImage(@NonNull String absPath, @NonNull PictureData data) {
         if (StringUtils.isEmpty(absPath) || data == null)
             throw new RuntimeException("absPath 和 data 不能为null.");
-        ByteArrayInputStream inputStream = null;
-        FileOutputStream fileOutputStream = null;
-        BufferedImage bufferedImage;
-        BufferedOutputStream bufferedOutputStream;
+        absPath = absPath + UUID.randomUUID().toString() + "." + data.getMimeType().split("/")[1];
+        /*
+         *   使用NIO进行保存图片的操作、
+         * */
+        ByteBuffer buffer = ByteBuffer.wrap(data.getData());
+        FileChannel fileChannel = null;
         try {
-            inputStream = new ByteArrayInputStream(data.getData());
-            bufferedImage = ImageIO.read(inputStream);
-            fileOutputStream = new FileOutputStream(absPath + UUID.randomUUID().toString() + "." + data.getMimeType().split("/")[1]);
-            bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
-            //内部会关闭outPutStream、
-            ImageIO.write(bufferedImage, data.getMimeType().split("/")[1], bufferedOutputStream);
-        } catch (Exception e) {
+            fileChannel = FileChannel.open(Paths.get(absPath), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            fileChannel.write(buffer);
+            return new AsyncResult<>(absPath);
+        } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            closeStream(inputStream, fileOutputStream);
+        }finally {
+            if (fileChannel != null) {
+                try {
+                    fileChannel.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
+//        ByteArrayInputStream inputStream = null;
+//        FileOutputStream fileOutputStream = null;
+//        BufferedImage bufferedImage;
+//        BufferedOutputStream bufferedOutputStream;
+//        try {
+//            inputStream = new ByteArrayInputStream(data.getData());
+//            bufferedImage = ImageIO.read(inputStream);
+//
+//            fileOutputStream = new FileOutputStream(absPath);
+//            bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+//            //内部会关闭outPutStream、
+//            ImageIO.write(bufferedImage, data.getMimeType().split("/")[1], bufferedOutputStream);
+//            return new AsyncResult<>(absPath);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        } finally {
+//            closeStream(inputStream, fileOutputStream);
+//        }
+        return new AsyncResult<>("");
     }
 
     /**

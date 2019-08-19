@@ -23,11 +23,14 @@ import java.io.*;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author 小66
@@ -669,7 +672,24 @@ public class POIExcelController {
             //这个Key是图片列的表头,如果图片不是一列、则对Map进行遍历.
             Object pictureData = map.get("图片");
             if (pictureData instanceof PictureData) {
-                excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
+                Future<String> future = excelUtil.writeImage(BASE_DIRECTORY_PATH, (PictureData) pictureData);
+                Executors.newCachedThreadPool().execute(() -> {
+                    while (!future.isDone()) {
+                        try {
+                            TimeUnit.MILLISECONDS.sleep(1500);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    try {
+                        String path = future.get();
+                        map.put("图片", path);
+                        //执行插入数据的操作、
+                        System.out.println("成功插入数据: " + map);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
             }
         }
         System.out.println("mapList = " + mapList.size());
