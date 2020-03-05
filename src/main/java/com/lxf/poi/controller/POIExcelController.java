@@ -39,8 +39,8 @@ public class POIExcelController {
 
     private final POIExcelUtil excelUtil;
 
-    private final String BASE_DIRECTORY_PATH = "C:\\Users\\Administrator\\Desktop\\POI\\";
-    private final String XLS_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "HSSF测试模板.xls";
+    private final String BASE_DIRECTORY_PATH = "C:\\Users\\sunway\\Desktop\\";
+    private final String XLS_TEMPLATE_FILE_PATH = BASE_DIRECTORY_PATH + "中监所面板通知SQL.xls";
 
     @Autowired
     public POIExcelController(POIExcelUtil excelUtil) {
@@ -132,8 +132,8 @@ public class POIExcelController {
         HSSFWorkbook book = (HSSFWorkbook) WorkbookFactory.create(system);
         HSSFSheet sheet = book.getSheetAt(0);
         Map<String, PictureData> pictureDataMap = getPictureDataMap(sheet);
-        List<Map<String, Object>> dataList = new ArrayList<>();
-        simpleIterator(book, dataList, pictureDataMap);
+        List<Map<String, Object>> dataList = simpleIterator(book, pictureDataMap);
+
         System.out.println("dataList = " + dataList);
         book.close();
         return "...";
@@ -631,10 +631,16 @@ public class POIExcelController {
      *
      * @param workbook Excel文件
      */
-    public void simpleIterator(Workbook workbook, List<Map<String, Object>> dataList, Map<String, PictureData> pictureDataMap) {
+    public List<Map<String, Object>> simpleIterator(Workbook workbook, Map<String, PictureData> pictureDataMap) {
+        List<Map<String, Object>> dataList = new ArrayList<>();
         DataFormatter formatter = new DataFormatter();
         for (Sheet sheet : workbook) {//sheetIterator
-            Row row0 = sheet.getRow(0);
+            int lastRowNum = sheet.getLastRowNum();
+            //判断当前sheet页是否有数据、
+            if (0 == lastRowNum) {
+                continue;
+            }
+            Row row0 = excelUtil.getNotEmptyFirstRow(sheet,0);
             for (Row row : sheet) {//rowIterator
                 Map<String, Object> map = new HashMap<>();
                 for (Cell cell : row) {//cellIterator
@@ -656,6 +662,7 @@ public class POIExcelController {
                 dataList.add(map);
             }
         }
+        return dataList;
     }
 
     @GetMapping("parseComplexXls")

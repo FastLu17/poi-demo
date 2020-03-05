@@ -873,4 +873,13 @@ public class POIExcelUtil {
             }
         }
     }
+
+    public Row getNotEmptyFirstRow(Sheet sheet, int index) {
+        Row row0 = sheet.getRow(index);
+        boolean rowEmpty = this.isRowEmpty(row0);
+        if (rowEmpty) {
+            return getNotEmptyFirstRow(sheet, index + 1);
+        }
+        return row0;
+    }
 }
